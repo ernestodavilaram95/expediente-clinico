@@ -205,6 +205,8 @@ b.pos{color:var(--bad)}b.neg{color:var(--ok)}
   .toast{bottom:calc(20px + env(safe-area-inset-bottom))}
   .banner{flex-direction:column;align-items:flex-start}
 }
+.tag.pop{background:#ece6fb;color:#4b2a9a}
+.surg{border-left:4px solid #8b6fd6}
 @media print{aside,.phead .tabs{display:none}}
 </style>
 </head>
@@ -553,7 +555,7 @@ const Sync = {
     await this.importPhoneChanges(silent);
   }
 };
-function fileIdsOf(p){ const ids=[]; (p.estudios||[]).forEach(e=>(e.files||[]).forEach(f=>{ ids.push(f.id); if(f.dicom) ids.push(...f.dicom.fileIds); })); (p.ejes||[]).forEach(a=>{ if(a.fileId) ids.push(a.fileId); }); return [...new Set(ids)]; }
+function fileIdsOf(p){ const ids=[]; (p.cirugias||[]).forEach(c=>(c.files||[]).forEach(f=>ids.push(f.id))); (p.estudios||[]).forEach(e=>(e.files||[]).forEach(f=>{ ids.push(f.id); if(f.dicom) ids.push(...f.dicom.fileIds); })); (p.ejes||[]).forEach(a=>{ if(a.fileId) ids.push(a.fileId); }); return [...new Set(ids)]; }
 
 /* ============ respaldo manual ============ */
 async function exportBackup(){
@@ -572,6 +574,7 @@ async function buildPackage({kind='respaldo', list=patients, deleted=[], skipIds
     let total=0; for(const p of list) for(const st of p.estudios||[]) for(const f of st.files||[]) if(f.dicom){
       let sz=0; for(const id of f.dicom.fileIds){ const r=await DB.get('files',id); sz+=r?r.blob.size:0; }
       if(sz>25e6 || total+sz>120e6) f.dicom.fileIds.forEach(id=>heavy.add(id)); else total+=sz; } }
+  if(phone) for(const p of list) for(const c of p.cirugias||[]) for(const f of c.files||[]) if(/^video\//.test(f.mime)){ const r=await DB.get('files',f.id); if(r&&r.blob.size>40e6) heavy.add(f.id); }
   const files=[];
   for(const id of ids){ if(heavy.has(id) || (skipIds&&skipIds.has(id))) continue; const f=await DB.get('files',id); if(f) files.push({id:f.id,name:f.name,mime:f.mime,b64:await fileB64(f)}); }
   return {app:'expediente-clinico', version:2, kind, exported:Date.now(), device:EAPP?'mac-app':(IS_TOUCH?'iphone':'navegador'), config: kind==='cambios'?null:config, patients:list, deleted, files, omitted:[...heavy]};
@@ -644,7 +647,7 @@ $('#btnNew').addEventListener('click', async()=>{
 });
 
 /* ============ vista principal ============ */
-const TABS=[['ficha','Ficha'],['consultas','Consultas y exploración'],['escalas','Escalas'],['estudios','Estudios de imagen'],['eje','Eje mecánico'],['receta','Indicaciones y receta']];
+const TABS=[['ficha','Ficha'],['consultas','Consultas y exploración'],['cirugias','Cirugías'],['escalas','Escalas'],['estudios','Estudios de imagen'],['eje','Eje mecánico'],['receta','Indicaciones y receta']];
 function packYears(p){ const c=+p.cigDia, a=+p.tabAnios; return (c>0&&a>0)? Math.round(c/20*a*10)/10 : null; }
 function imc(p){ const w=+p.peso, h=+p.talla/100; return (w>0&&h>0)? Math.round(w/(h*h)*10)/10 : null; }
 function headerMeta(p){
@@ -653,6 +656,8 @@ function headerMeta(p){
   if(p.tabaco==='Fumador actual'){ const py=packYears(p); tags.push(`<span class="tag bad">🚬 Fumador${py?' · '+py+' paq-año':''}</span>`); }
   else if(p.tabaco==='Exfumador') tags.push(`<span class="tag warn">Exfumador</span>`);
   if(p.alcohol && p.alcohol!=='No consume') tags.push(`<span class="tag warn">Alcohol: ${esc(p.alcohol.toLowerCase())}</span>`);
+  const ult=[...(p.cirugias||[])].filter(c=>c.fecha&&c.procedimientos).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+  if(ult) tags.push(`<span class="tag pop">🩹 ${esc(popTexto(ult.fecha))}${ult.procedimientos?' · '+esc(ult.procedimientos.split('\n')[0].slice(0,48)):''}</span>`);
   if(p.alergias) tags.push(`<span class="tag bad">⚠︎ Alergias: ${esc(p.alergias)}</span>`);
   const basic=[p.fechaNac?age(p.fechaNac)+' años':'', p.sexo, p.dominancia, imc(p)?'IMC '+imc(p):'', p.telefono].filter(Boolean).map(esc).join(' · ');
   return `<span>${basic||'Complete la ficha del paciente'}</span> ${tags.join(' ')}`;
@@ -669,7 +674,7 @@ function render(){
       <div class="tabs">${TABS.map(([k,l])=>`<button class="tab ${tab===k?'on':''}" data-tab="${k}">${l}</button>`).join('')}</div>
     </div>
     <div class="content" id="content"></div>`;
-  ({ficha:renderFicha, consultas:renderConsultas, escalas:renderEscalas, estudios:renderEstudios, eje:renderEje, receta:renderReceta})[tab](p, $('#content'));
+  ({ficha:renderFicha, consultas:renderConsultas, cirugias:renderCirugias, escalas:renderEscalas, estudios:renderEstudios, eje:renderEje, receta:renderReceta})[tab](p, $('#content'));
 }
 $('#main').addEventListener('click', e=>{ const t=e.target.closest('[data-tab]'); if(t){ tab=t.dataset.tab; render(); } });
 
@@ -823,6 +828,59 @@ function renderConsultas(p, el){
     const s=MSTATE[(MSTATE.indexOf(ex.m[m.dataset.man]||'')+1)%3]; if(s) ex.m[m.dataset.man]=s; else delete ex.m[m.dataset.man];
     m.className='mchip '+(s==='+'?'pos':s==='−'?'neg':''); $('b',m).textContent=s||'·'; upd(ex,r); });
 }
+
+/* ---------- Cirugías ---------- */
+function popTexto(fecha, ref){ if(!fecha) return ''; const d=Math.floor((new Date((ref||today())+'T00:00')-new Date(fecha+'T00:00'))/864e5);
+  if(d<0) return `Programada (${fmtDate(fecha)})`; if(d===0) return 'Operado hoy'; if(d<14) return `POP ${d} día${d===1?'':'s'}`; if(d<120) return `POP ${Math.floor(d/7)} semanas`; if(d<730) return `POP ${Math.floor(d/30.44)} meses`; return `POP ${(d/365.25).toFixed(1).replace('.0','')} años`; }
+const PROCS={ 'Hombro':['Reparación artroscópica del manguito rotador','Tenodesis del bíceps','Tenotomía del bíceps','Reparación de Bankart artroscópica','Latarjet','Remplissage','Reparación de SLAP','Descompresión subacromial / acromioplastia','Resección de clavícula distal','Reparación del subescapular','Liberación capsular artroscópica','Reconstrucción acromioclavicular','Artroplastia total de hombro','Artroplastia invertida de hombro'],
+  'Rodilla':['Reconstrucción de LCA','Reconstrucción de LCP','Reconstrucción de LPFM','Meniscectomía parcial artroscópica','Sutura meniscal','Trasplante meniscal','Osteotomía tibial alta de apertura','Osteotomía femoral distal','Condroplastia / microfracturas','Reconstrucción de esquina posterolateral','Artroplastia total de rodilla'],
+  'Codo':['Liberación de epicondilitis','Reparación de bíceps distal','Reconstrucción de LCU','Artroscopia de codo'] };
+function renderCirugias(p, el){
+  const cs=[...(p.cirugias||[])].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  const asc=[...(p.cirugias||[])].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  el.innerHTML=`<div class="row between" style="margin-bottom:14px"><span class="muted">${cs.length} cirugía(s)</span><button class="pri" data-act="newCirugia">+ Nueva cirugía</button></div>
+  ${cs.map(c=>{ const n=asc.indexOf(c)+1; return `<div class="list-item surg" data-xid="${c.id}">
+    <div class="lh"><div class="row"><b style="font-size:15px">Cirugía ${n}</b>${c.fecha?`<span class="tag pop">${esc(popTexto(c.fecha))}</span>`:''}</div>
+      <button class="sm ghost danger" data-act="delCirugia" data-id="${c.id}">Eliminar</button></div>
+    <div class="grid g4">
+      <div><label>Fecha de la cirugía</label><input type="date" data-x="fecha" value="${esc(c.fecha)}"></div>
+      <div><label>Región</label><select data-x="region"><option></option>${['Hombro','Codo','Rodilla','Cadera','Tobillo / pie','Muñeca / mano','Otra'].map(o=>`<option ${c.region===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      <div><label>Lado</label><select data-x="lado"><option></option>${['Derecho','Izquierdo','Bilateral'].map(o=>`<option ${c.lado===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      <div><label>Hospital</label><input data-x="hospital" value="${esc(c.hospital)}"></div>
+      <div class="span4"><label>Procedimiento(s) realizado(s)</label><textarea data-x="procedimientos" style="min-height:60px" placeholder="Uno por línea">${esc(c.procedimientos)}</textarea>
+        <details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--pri);font-weight:600">Agregar procedimientos frecuentes</summary>
+          ${Object.entries(PROCS).map(([g,arr])=>`<div class="mg-t" style="margin-top:8px">${g}</div><div class="chips">${arr.map(x=>`<span class="chip" data-proc="${esc(x)}">${esc(x)}</span>`).join('')}</div>`).join('')}</details></div>
+      <div class="span2"><label>Diagnóstico preoperatorio</label><textarea data-x="dxPre" style="min-height:56px">${esc(c.dxPre)}</textarea></div>
+      <div class="span2"><label>Hallazgos transoperatorios</label><textarea data-x="hallazgos" style="min-height:56px">${esc(c.hallazgos)}</textarea></div>
+      <div class="span2"><label>Técnica / implantes (anclas, injerto, tornillos…)</label><textarea data-x="tecnica" style="min-height:56px">${esc(c.tecnica)}</textarea></div>
+      <div class="span2"><label>Cirujano, ayudantes y anestesia</label><textarea data-x="equipo" style="min-height:56px">${esc(c.equipo)}</textarea></div>
+      <div class="span2"><label>Complicaciones</label><textarea data-x="complicaciones" style="min-height:48px" placeholder="Ninguna">${esc(c.complicaciones)}</textarea></div>
+      <div class="span2"><label>Plan postoperatorio / protocolo de rehabilitación</label><textarea data-x="planPop" style="min-height:48px">${esc(c.planPop)}</textarea></div>
+    </div>
+    <label style="margin-top:12px">Imágenes de la cirugía</label>
+    <div class="thumbs">${(c.files||[]).map(f=>`<div class="thumb ${f.mime==='application/pdf'?'pdf':''}" data-open="${f.id}" data-mime="${esc(f.mime)}">${f.mime==='application/pdf'?'PDF':/^video\//.test(f.mime)?'<span style="color:#fff;font-size:28px">▶︎</span>':`<img data-src="${f.id}">`}<div class="fname">${esc(f.name)}</div><button class="x" data-act="delSurgFile" data-xid="${c.id}" data-id="${f.id}">×</button></div>`).join('')}</div>
+    <div class="drop" data-sdrop="${c.id}">Arrastre aquí fotos o videos de la artroscopia / cirugía, o <a href="#" data-act="addSurgFiles" data-id="${c.id}">elija archivos</a></div>
+  </div>`; }).join('') || '<div class="card muted">Sin cirugías registradas. Pulse «+ Nueva cirugía».</div>'}`;
+  $$('img[data-src]',el).forEach(async i=>i.src=await fileURL(i.dataset.src));
+  const C=e=>p.cirugias.find(x=>x.id===e.target.closest('[data-xid]').dataset.xid);
+  el.addEventListener('input',e=>{ const k=e.target.dataset.x; if(!k) return; C(e)[k]=e.target.value; savePatientSoon(p); if(k==='fecha') $('#pmeta').innerHTML=headerMeta(p); });
+  el.addEventListener('change',e=>{ const k=e.target.dataset.x; if(k==='fecha'){ C(e).fecha=e.target.value; savePatientSoon(p); render(); } });
+  el.addEventListener('click',e=>{ const ch=e.target.closest('[data-proc]'); if(!ch) return; const c=C(e); const ta=$('[data-x="procedimientos"]',e.target.closest('[data-xid]'));
+    c.procedimientos=(c.procedimientos&&c.procedimientos.trim()? c.procedimientos.replace(/\s*$/,'')+'\n':'')+ch.dataset.proc; ta.value=c.procedimientos; savePatientSoon(p); $('#pmeta').innerHTML=headerMeta(p); });
+  $$('[data-sdrop]',el).forEach(d=>{ d.addEventListener('dragover',e=>{e.preventDefault();d.classList.add('over');}); d.addEventListener('dragleave',()=>d.classList.remove('over'));
+    d.addEventListener('drop',async e=>{e.preventDefault();d.classList.remove('over'); await addSurgFiles(p,d.dataset.sdrop,await filesFromDrop(e.dataTransfer));}); });
+}
+async function addSurgFiles(p, xid, files){
+  const c=p.cirugias.find(x=>x.id===xid); let skipped=0; busy('Guardando imágenes…');
+  try{ for(const f of files){ if(/^\./.test(f.name)) continue; if(/^(image|video)\//.test(f.type)||f.type==='application/pdf'||/\.(heic|heif)$/i.test(f.name)){ let blob=f;
+      if(/\.(heic|heif)$/i.test(f.name) && !/^image\/(jpeg|png)/.test(f.type)){ try{ const bmp=await createImageBitmap(f); const cv=mkCanvas(bmp.width,bmp.height); cv.getContext('2d').drawImage(bmp,0,0); blob=new File([await cv.convertToBlob({type:'image/jpeg',quality:.9})], f.name.replace(/\.\w+$/,'.jpg'), {type:'image/jpeg'}); }catch(e){} }
+      const rec=await addFile(blob, blob.name||f.name); c.files=c.files||[]; c.files.push({id:rec.id,name:rec.name,mime:rec.mime}); } else skipped++; } }
+  finally{ busy(null); }
+  await savePatient(p); render(); if(skipped) toast(`${skipped} archivo(s) omitidos: solo fotos, videos o PDF`);
+}
+async function openVideo(id){ const u=await fileURL(id); const v=document.createElement('div'); v.className='viewer';
+  v.innerHTML=`<div class="vbar"><b>Video de la cirugía</b><span style="flex:1"></span><button class="sm" id="vclose">Cerrar ✕</button></div><video src="${u}" controls playsinline autoplay style="flex:1;min-height:0;width:100%;background:#000"></video>`;
+  document.body.appendChild(v); $('#vclose',v).onclick=()=>v.remove(); }
 
 /* ---------- Escalas funcionales ---------- */
 const o=(...a)=>a; // [etiqueta, puntos]
@@ -1619,7 +1677,8 @@ function rxOverlay(){ const box=$('#rxPrev'); if(!box||!RXP||!RXP.scale) return;
 /* ============ acciones ============ */
 document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-act]'); if(b){ e.preventDefault(); }
-  const opn=e.target.closest('[data-open]'); if(opn && !b){ const st=P()?.estudios?.find(x=>x.id===opn.dataset.sid); const ent=st?.files?.find(f=>f.id===opn.dataset.open); if(ent&&ent.dicom) openDicomViewer(ent); else openViewer(opn.dataset.open, opn.dataset.mime); return; }
+  const opn=e.target.closest('[data-open]'); if(opn && !b && /^video\//.test(opn.dataset.mime||'')){ openVideo(opn.dataset.open); return; }
+  if(opn && !b){ const st=P()?.estudios?.find(x=>x.id===opn.dataset.sid); const ent=st?.files?.find(f=>f.id===opn.dataset.open); if(ent&&ent.dicom) openDicomViewer(ent); else openViewer(opn.dataset.open, opn.dataset.mime); return; }
   if(!b) return; const a=b.dataset.act, id=b.dataset.id, p=P();
   switch(a){
     case 'openSettings': openSettings(); break;
@@ -1650,6 +1709,10 @@ document.addEventListener('click', async e=>{
     case 'saveScale': { const S=SCALES[SC.scale]; const R=S.calc(SC.values); if(!scaleComplete(S,SC.values)&&!confirm('Faltan reactivos por contestar. ¿Guardar de todos modos?')) break;
         p.escalas=p.escalas||[]; const rec={id:SC.id||uid(), scale:SC.scale, fecha:SC.fecha, lado:SC.lado||'', momento:SC.momento||'', values:SC.values, score:R.s, max:R.max, interp:R.i||''};
         const i=p.escalas.findIndex(x=>x.id===rec.id); if(i>=0) p.escalas[i]=rec; else p.escalas.push(rec); SC=null; await savePatient(p); render(); toast('Escala guardada'); } break;
+    case 'newCirugia': p.cirugias=p.cirugias||[]; p.cirugias.push({id:uid(),fecha:today(),files:[]}); await savePatient(p); render(); break;
+    case 'delCirugia': if(confirm('¿Eliminar esta cirugía y sus imágenes?')){ const c=p.cirugias.find(x=>x.id===id); for(const f of c.files||[]) await DB.del('files',f.id); p.cirugias=p.cirugias.filter(x=>x.id!==id); await savePatient(p); render(); } break;
+    case 'addSurgFiles': { const fs=await pickFiles('image/*,video/*,application/pdf'); if(fs.length) await addSurgFiles(p,id,fs); } break;
+    case 'delSurgFile': { e.stopPropagation(); if(!confirm('¿Eliminar este archivo?')) break; const c=p.cirugias.find(x=>x.id===b.dataset.xid); c.files=c.files.filter(f=>f.id!==id); await DB.del('files',id); await savePatient(p); render(); } break;
     case 'newEstudio': p.estudios=p.estudios||[]; p.estudios.push({id:uid(),fecha:today(),tipo:'Radiografía',region:'Rodilla',files:[]}); await savePatient(p); render(); break;
     case 'delEstudio': if(confirm('¿Eliminar este estudio y sus imágenes?')){ const s=p.estudios.find(x=>x.id===id); for(const f of s.files||[]){ await DB.del('files',f.id); for(const x of (f.dicom?.fileIds||[])) await DB.del('files',x); } p.estudios=p.estudios.filter(x=>x.id!==id); await savePatient(p); render(); } break;
     case 'addFiles': { const fs=await pickFiles(''); if(fs.length) await addStudyFiles(p,id,fs); } break;
