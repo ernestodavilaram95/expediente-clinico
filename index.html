@@ -229,6 +229,10 @@ tr.clk{cursor:pointer}tr.clk:hover{background:#f6f9fc}
 .week .cita .row{flex-wrap:wrap}.week .cita .est{display:none}.week .cita{font-size:12.5px}
 @media (max-width:820px){ .week{grid-template-columns:1fr} .ag-tot div{min-width:0;flex:1 1 30%} .ag-nav b{width:100%;order:9} .seg{order:10} }
 .cap{display:inline-block}.cap::first-letter{text-transform:uppercase}
+.cxbtn{background:#5b3fb8;border-color:#5b3fb8;color:#fff}.cxbtn:hover{background:#4a3196}
+.cita.cx{background:#efe9fc;border-left-color:#5b3fb8}.cita.cx .est{color:#5b3fb8}
+.slot.ocup{background:repeating-linear-gradient(45deg,#f6f2fe,#f6f2fe 6px,#fbf9ff 6px,#fbf9ff 12px)}
+.cx-cont{font-size:12.5px;color:#5b3fb8;padding:8px 10px;cursor:pointer;font-weight:600}
 @media print{aside,.phead .tabs{display:none}}
 </style>
 </head>
@@ -871,7 +875,7 @@ const ESTADOS=['Programada','Confirmada','En sala de espera','Atendida','No asis
 const EST_CLS={'Programada':'e-prog','Confirmada':'e-conf','En sala de espera':'e-sala','Atendida':'e-ok','No asistió':'e-no','Cancelada':'e-can'};
 const TIPOS_CITA=['Primera vez','Subsecuente','Postoperatorio','Procedimiento / infiltración','Cirugía','Valoración preoperatoria'];
 const FORMAS=['Efectivo','Tarjeta','Transferencia','Aseguradora','Cortesía'];
-const AGENDA_DEFAULT={inicio:'08:00', fin:'20:00', intervalo:30, duracion:30, precios:{'Primera vez':0,'Subsecuente':0,'Postoperatorio':0}, codigoPais:'52',
+const AGENDA_DEFAULT={inicio:'07:00', fin:'20:00', intervalo:30, duracion:30, avisoCita:60, avisoCirugia:120, avisoCirugiaDiaAntes:true, precios:{'Primera vez':0,'Subsecuente':0,'Postoperatorio':0}, codigoPais:'52',
   recordatorio:'Hola {nombre}, le recordamos su cita con el {doctor} el {dia} a las {hora}. Por favor confirme su asistencia respondiendo a este mensaje. ¡Gracias!'};
 const vivas=()=>citas.filter(c=>!c.deleted);
 const money=n=>'$'+(Math.round((+n||0)*100)/100).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});
@@ -880,6 +884,43 @@ const DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'
 const fechaLarga=iso=>{ const d=new Date(iso+'T12:00'); return `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]}`; };
 const toMin=h=>{ const [a,b]=(h||'0:0').split(':').map(Number); return a*60+b; };
 const toHora=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const isCx=c=>c.kind==='cirugia';
+const finCita=c=>toMin(c.hora)+(+c.duracion||30);
+function icsEsc(t){ return String(t||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;'); }
+function icsFold(l){ const out=[]; let s=l; while(s.length>73){ out.push(s.slice(0,73)); s=' '+s.slice(73); } out.push(s); return out.join('\r\n'); }
+function icsFecha(iso,min){ const d=new Date(iso+'T00:00'); d.setMinutes(min); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`; }
+function buildICS(list){
+  const cfg=agCfg(); const now=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Expediente Clinico//ES','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:Expediente Clínico'];
+  for(const c of list){ if(!c.hora||!c.fecha) continue; const cx=isCx(c); const nom=citaNombre(c);
+    const sum= cx? `🩺 Cirugía: ${c.procedimiento||'procedimiento'} – ${nom}` : `${nom} · ${c.tipo||'Consulta'}`;
+    const desc=[cx?`Paciente: ${nom}`:'', c.motivo, cx&&c.duracion?`Duración estimada: ${(c.duracion/60).toString().replace('.',',')} h`:'', citaTel(c)?`Tel: ${citaTel(c)}`:'', c.notas].filter(Boolean).join('\n');
+    L.push('BEGIN:VEVENT',`UID:${c.id}@expediente-clinico`,`DTSTAMP:${now}`,`DTSTART:${icsFecha(c.fecha,toMin(c.hora))}`,`DTEND:${icsFecha(c.fecha,finCita(c))}`,`SUMMARY:${icsEsc(sum)}`);
+    if(c.hospital) L.push(`LOCATION:${icsEsc(c.hospital)}`); if(desc) L.push(`DESCRIPTION:${icsEsc(desc)}`);
+    if(c.estado==='Cancelada') L.push('STATUS:CANCELLED');
+    const al=cx? [+cfg.avisoCirugia||120, ...(cfg.avisoCirugiaDiaAntes?[1440]:[])] : [+cfg.avisoCita||60];
+    for(const m of al) L.push('BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${icsEsc(sum)}`,`TRIGGER:-PT${m}M`,'END:VALARM');
+    L.push('END:VEVENT'); }
+  L.push('END:VCALENDAR'); return L.map(icsFold).join('\r\n')+'\r\n';
+}
+async function toCalendar(list, name){
+  const ics=buildICS(list); const fname=(name||'citas')+'.ics';
+  if(EAPP&&EAPP.openICS){ await EAPP.openICS(ics, fname); toast('Abriendo Calendario… confirme para agregar'); return; }
+  const blob=new Blob([ics],{type:'text/calendar'});
+  if(IS_TOUCH){ const u=URL.createObjectURL(blob); const w=window.open(u,'_blank'); if(!w) location.href=u; return; }
+  await shareOrDownload(blob, fname, 'Calendario');
+}
+/* avisos en la Mac mientras la app está abierta */
+const AVISADOS=new Set();
+function revisarAvisos(){
+  if(!('Notification' in window) || IS_TOUCH) return; if(Notification.permission==='default'){ try{ Notification.requestPermission(); }catch(e){} return; } if(Notification.permission!=='granted') return;
+  const cfg=agCfg(); const now=new Date(); const hoy=today(), man=addDays(hoy,1); const nm=now.getHours()*60+now.getMinutes();
+  for(const c of vivas()){ if(['Cancelada','Atendida','No asistió'].includes(c.estado)||!c.hora) continue;
+    const ant= isCx(c)? (+cfg.avisoCirugia||120) : (+cfg.avisoCita||60);
+    if(c.fecha===hoy){ const falta=toMin(c.hora)-nm; const k=c.id+':'+c.fecha+c.hora;
+      if(falta>=0 && falta<=ant && !AVISADOS.has(k)){ AVISADOS.add(k); new Notification(isCx(c)?`Cirugía a las ${c.hora}`:`Cita a las ${c.hora}`, {body:`${citaNombre(c)}${isCx(c)?' · '+(c.procedimiento||''):' · '+(c.tipo||'')}${c.hospital?' · '+c.hospital:''}`}); } }
+    if(isCx(c) && cfg.avisoCirugiaDiaAntes && c.fecha===man && nm>=18*60){ const k='d:'+c.id+c.fecha; if(!AVISADOS.has(k)){ AVISADOS.add(k); new Notification(`Mañana cirugía a las ${c.hora}`, {body:`${citaNombre(c)} · ${c.procedimiento||''}${c.hospital?' · '+c.hospital:''}`}); } } }
+}
 function citaNombre(c){ const p=c.pacienteId&&patients.find(x=>x.id===c.pacienteId); return p?fullName(p):(c.nombre||'Sin nombre'); }
 function citaTel(c){ const p=c.pacienteId&&patients.find(x=>x.id===c.pacienteId); return (c.telefono||p?.telefono||'').trim(); }
 function agCfg(){ config.agenda=Object.assign(JSON.parse(JSON.stringify(AGENDA_DEFAULT)), config.agenda||{}); return config.agenda; }
@@ -901,7 +942,7 @@ function renderAgenda(m){
   const T=totales(lista);
   const mañana=addDays(today(),1); const pendRec=vivas().filter(c=>c.fecha===mañana && !['Cancelada','Atendida'].includes(c.estado) && !c.recordatorio);
   m.innerHTML=`<div class="phead"><div class="row between"><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="mback ghost" data-act="agBack">‹</button><h1>📅 Agenda</h1></div>
-      <button class="pri" data-act="citaNueva" data-fecha="${f}">+ Nueva cita</button></div>
+      <div class="row"><button class="ghost" data-act="agICS" title="Agregar citas y cirugías al Calendario del iPhone/Mac, con aviso">🔔 Al calendario</button><button class="cxbtn" data-act="cxNueva" data-fecha="${f}">+ Cirugía</button><button class="pri" data-act="citaNueva" data-fecha="${f}">+ Nueva cita</button></div></div>
     <div class="row ag-nav"><button data-act="agMove" data-d="-1">‹</button><button data-act="agHoy">Hoy</button><button data-act="agMove" data-d="1">›</button>
       <input type="date" id="agFecha" value="${f}" style="width:160px"><b class="cap" style="margin-left:4px">${esc(titulo)}</b>
       <span style="flex:1"></span><div class="seg">${[['dia','Día'],['semana','Semana'],['mes','Mes']].map(([k,l])=>`<button class="${AG.vista===k?'on':''}" data-act="agVista" data-v="${k}">${l}</button>`).join('')}</div></div>
@@ -914,8 +955,11 @@ function renderAgenda(m){
   if(AG.vista==='dia'){
     const ini=toMin(cfg.inicio), fin=toMin(cfg.fin), step=+cfg.intervalo||30; const slots=[];
     const delDia=lista; const usadas=new Set();
+    const cxs=delDia.filter(c=>isCx(c)&&c.estado!=='Cancelada');
     for(let t=ini;t<fin;t+=step){ const h=toHora(t); const enSlot=delDia.filter(c=>{ const cm=toMin(c.hora); return cm>=t&&cm<t+step; }); enSlot.forEach(c=>usadas.add(c.id));
-      slots.push(`<div class="slot"><div class="sh">${h}</div><div class="sc">${enSlot.map(citaCard).join('')||`<button class="slot-add" data-act="citaNueva" data-fecha="${f}" data-hora="${h}">+</button>`}</div></div>`); }
+      const enCurso=cxs.find(c=>toMin(c.hora)<t && finCita(c)>t && !enSlot.includes(c));
+      const vacio= enCurso? `<div class="cx-cont" data-act="citaEditar" data-id="${enCurso.id}">⏵ En cirugía${enCurso.hospital?' · '+esc(enCurso.hospital):''} (hasta ${toHora(finCita(enCurso))})</div>` : `<button class="slot-add" data-act="citaNueva" data-fecha="${f}" data-hora="${h}">+</button>`;
+      slots.push(`<div class="slot ${enCurso?'ocup':''}"><div class="sh">${h}</div><div class="sc">${enSlot.map(citaCard).join('')||vacio}</div></div>`); }
     const fuera=delDia.filter(c=>!usadas.has(c.id));
     body.innerHTML=`<div class="card" style="padding:6px 10px">${slots.join('')}${fuera.length?`<div class="slot"><div class="sh">Otras</div><div class="sc">${fuera.map(citaCard).join('')}</div></div>`:''}</div>`;
   } else if(AG.vista==='semana'){
@@ -933,6 +977,10 @@ function renderAgenda(m){
 }
 function citaCard(c){
   const p=c.pacienteId&&patients.find(x=>x.id===c.pacienteId);
+  if(isCx(c)) return `<div class="cita cx ${c.estado==='Cancelada'?'e-can':''}" data-act="citaEditar" data-id="${c.id}">
+    <div class="row between" style="flex-wrap:nowrap"><b>🩺 ${esc(c.hora||'')}–${toHora(finCita(c))} · Cirugía</b><span class="est">${esc(((+c.duracion||0)/60).toString().replace('.',','))} h</span></div>
+    <div class="cm"><b>${esc(citaNombre(c))}</b>${c.procedimiento?' · '+esc(c.procedimiento):''}</div>
+    <div class="cm">${c.hospital?'🏥 '+esc(c.hospital):''}${c.monto?` · Honorarios ${money(c.monto)} ${c.pagado?'✓ pagado':'· por cobrar'}`:''}</div></div>`;
   return `<div class="cita ${EST_CLS[c.estado]||''}" data-act="citaEditar" data-id="${c.id}">
     <div class="row between" style="flex-wrap:nowrap"><b>${esc(c.hora||'')} · ${esc(citaNombre(c))}</b><span class="est">${esc(c.estado||'Programada')}</span></div>
     <div class="cm">${esc([c.tipo, c.motivo].filter(Boolean).join(' · '))}${p&&p.deporte?` · 🏅 ${esc(p.deporte)}`:''}</div>
@@ -946,40 +994,48 @@ function citaModal(c, isNew){
   const cfg=agCfg(); const bg=document.createElement('div'); bg.className='modal-bg';
   const pac=c.pacienteId&&patients.find(x=>x.id===c.pacienteId);
   bg.innerHTML=`<div class="modal" style="width:640px">
-    <div class="row between"><h2>${isNew?'Nueva cita':'Cita'}</h2><button class="ghost" data-x>✕</button></div>
+    <div class="row between"><h2>${isCx(c)?(isNew?'🩺 Nueva cirugía':'🩺 Cirugía'):(isNew?'Nueva cita':'Cita')}</h2><button class="ghost" data-x>✕</button></div>
     <div class="grid g2">
       <div class="span2" style="position:relative"><label>Paciente</label><input id="ciPac" autocomplete="off" placeholder="Buscar expediente o escribir nombre de paciente nuevo" value="${esc(pac?fullName(pac):(c.nombre||''))}">
         <div id="ciSug" class="sug"></div><div id="ciPacInfo" class="muted" style="font-size:12px;margin-top:4px">${pac?'✓ Ligada al expediente':''}</div></div>
       <div><label>Teléfono (WhatsApp)</label><input id="ciTel" type="tel" value="${esc(c.telefono||pac?.telefono||'')}"></div>
-      <div><label>Tipo de consulta</label><select id="ciTipo">${TIPOS_CITA.map(t=>`<option ${c.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      ${isCx(c)?`<div><label>Hospital / quirófano</label><input id="ciHosp" value="${esc(c.hospital||'')}" list="hospitales"><datalist id="hospitales">${[...new Set(vivas().map(x=>x.hospital).filter(Boolean))].map(h=>`<option>${esc(h)}</option>`).join('')}</datalist></div>
+      <div class="span2"><label>Procedimiento</label><input id="ciProc" value="${esc(c.procedimiento||'')}" list="procs" placeholder="Reconstrucción de LCA rodilla derecha"><datalist id="procs">${Object.values(PROCS).flat().map(x=>`<option>${esc(x)}</option>`).join('')}</datalist></div>
+      <div><label>Fecha</label><input id="ciFecha" type="date" value="${esc(c.fecha)}"></div>
+      <div class="row" style="gap:8px;flex-wrap:nowrap"><div style="flex:1"><label>Hora de inicio</label><input id="ciHora" type="time" step="300" value="${esc(c.hora)}"></div><div style="flex:1"><label>Duración (horas)</label><input id="ciDurH" type="number" step="0.5" min="0.5" value="${esc(((+c.duracion||120)/60))}"></div></div>
+      <div class="span2"><label>Notas para el quirófano (material, implantes, anestesia, ayudantes)</label><input id="ciMot" value="${esc(c.motivo||'')}"></div>
+      <div class="span2"><label style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)"><input id="ciReg" type="checkbox" style="width:auto" ${c.cirugiaId||isNew?'checked':''}> Registrar también en la pestaña «Cirugías» del paciente</label></div>`
+      :`<div><label>Tipo de consulta</label><select id="ciTipo">${TIPOS_CITA.map(t=>`<option ${c.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
       <div><label>Fecha</label><input id="ciFecha" type="date" value="${esc(c.fecha)}"></div>
       <div class="row" style="gap:8px;flex-wrap:nowrap"><div style="flex:1"><label>Hora</label><input id="ciHora" type="time" step="300" value="${esc(c.hora)}"></div><div style="flex:1"><label>Duración (min)</label><input id="ciDur" type="number" step="5" value="${esc(c.duracion||cfg.duracion)}"></div></div>
-      <div class="span2"><label>Motivo</label><input id="ciMot" value="${esc(c.motivo||'')}" placeholder="Dolor de hombro derecho, control POP…"></div>
+      <div class="span2"><label>Motivo</label><input id="ciMot" value="${esc(c.motivo||'')}" placeholder="Dolor de hombro derecho, control POP…"></div>`}
       <div><label>Estado</label><select id="ciEst">${ESTADOS.map(t=>`<option ${(c.estado||'Programada')===t?'selected':''}>${t}</option>`).join('')}</select></div>
       <div><label>Agendó</label><input id="ciAg" value="${esc(c.agendo||'')}" placeholder="Nombre del asistente"></div>
-      <div><label>Cobro ($)</label><input id="ciMonto" type="number" step="50" min="0" value="${esc(c.monto??'')}"></div>
+ <div><label>${isCx(c)?'Honorarios ($)':'Cobro ($)'}</label><input id="ciMonto" type="number" step="50" min="0" value="${esc(c.monto??'')}"></div>
       <div class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-end"><label style="margin:0 0 9px;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)"><input id="ciPag" type="checkbox" style="width:auto" ${c.pagado?'checked':''}> Pagado</label>
         <div style="flex:1"><label>Forma de pago</label><select id="ciForma"><option></option>${FORMAS.map(t=>`<option ${c.formaPago===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
       <div class="span2"><label>Notas</label><textarea id="ciNotas" style="min-height:50px">${esc(c.notas||'')}</textarea></div>
     </div>
     <div class="row" style="margin-top:14px;flex-wrap:wrap">
       <button class="pri" id="ciSave">Guardar</button>
-      <a class="btnlink" id="ciWA" target="_blank" rel="noopener">📲 Recordatorio por WhatsApp</a>
+      <a class="btnlink" id="ciWA" target="_blank" rel="noopener">📲 ${isCx(c)?'Avisar al paciente':'Recordatorio'} por WhatsApp</a>
+      <button id="ciCal">🔔 Agregar a mi calendario</button>
       ${!isNew?`<button id="ciExp">Abrir expediente</button><button class="ghost danger" id="ciDel">Eliminar cita</button>`:''}
     </div></div>`;
   document.body.appendChild(bg);
   let sel=pac?pac.id:null;
   const close=()=>bg.remove(); bg.addEventListener('click',e=>{ if(e.target===bg||e.target.closest('[data-x]')) close(); });
-  const precio=()=>{ const pr=(cfg.precios||{})[$('#ciTipo',bg).value]; if(isNew && pr && !$('#ciMonto',bg).value) $('#ciMonto',bg).value=pr; };
-  precio(); $('#ciTipo',bg).onchange=()=>{ if(isNew){ $('#ciMonto',bg).value=''; precio(); } };
+  const precio=()=>{ if(isCx(c)) return; const pr=(cfg.precios||{})[$('#ciTipo',bg).value]; if(isNew && pr && !$('#ciMonto',bg).value) $('#ciMonto',bg).value=pr; };
+  if(!isCx(c)){ precio(); $('#ciTipo',bg).onchange=()=>{ if(isNew){ $('#ciMonto',bg).value=''; precio(); } }; }
   const sug=$('#ciSug',bg);
   $('#ciPac',bg).oninput=e=>{ sel=null; $('#ciPacInfo',bg).textContent='Paciente nuevo: se creará su expediente al guardar.'; const q=e.target.value.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     if(q.length<2){ sug.innerHTML=''; return; }
     const r=patients.filter(p=>fullName(p).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').includes(q)).slice(0,6);
     sug.innerHTML=r.map(p=>`<div data-sp="${p.id}"><b>${esc(fullName(p))}</b> <span class="muted">${p.telefono?esc(p.telefono):''}${p.expediente?' · Exp. '+esc(p.expediente):''}</span></div>`).join(''); };
   sug.onclick=e=>{ const it=e.target.closest('[data-sp]'); if(!it) return; const p=patients.find(x=>x.id===it.dataset.sp); sel=p.id; $('#ciPac',bg).value=fullName(p); if(p.telefono) $('#ciTel',bg).value=p.telefono; $('#ciPacInfo',bg).textContent='✓ Ligada al expediente'; sug.innerHTML=''; updWA(); };
-  const leer=()=>({...c, pacienteId:sel, nombre:sel?'':$('#ciPac',bg).value.trim(), telefono:$('#ciTel',bg).value.trim(), tipo:$('#ciTipo',bg).value, fecha:$('#ciFecha',bg).value, hora:$('#ciHora',bg).value,
-    duracion:+$('#ciDur',bg).value||cfg.duracion, motivo:$('#ciMot',bg).value.trim(), estado:$('#ciEst',bg).value, agendo:$('#ciAg',bg).value.trim(), monto:$('#ciMonto',bg).value===''?'':+$('#ciMonto',bg).value,
+  const leer=()=>({...c, pacienteId:sel, nombre:sel?'':$('#ciPac',bg).value.trim(), telefono:$('#ciTel',bg).value.trim(), tipo:isCx(c)?'Cirugía':$('#ciTipo',bg).value, fecha:$('#ciFecha',bg).value, hora:$('#ciHora',bg).value,
+    ...(isCx(c)?{hospital:$('#ciHosp',bg).value.trim(), procedimiento:$('#ciProc',bg).value.trim()}:{}),
+    duracion:isCx(c)?Math.round((+$('#ciDurH',bg).value||2)*60):(+$('#ciDur',bg).value||cfg.duracion), motivo:$('#ciMot',bg).value.trim(), estado:$('#ciEst',bg).value, agendo:$('#ciAg',bg).value.trim(), monto:$('#ciMonto',bg).value===''?'':+$('#ciMonto',bg).value,
     pagado:$('#ciPag',bg).checked, formaPago:$('#ciForma',bg).value, notas:$('#ciNotas',bg).value});
   const updWA=()=>{ const l=waLink(leer()); const a=$('#ciWA',bg); if(l){ a.href=l; a.classList.remove('dis'); } else { a.removeAttribute('href'); a.classList.add('dis'); } };
   ['ciTel','ciFecha','ciHora','ciPac'].forEach(i=>$('#'+i,bg).addEventListener('input',updWA)); updWA();
@@ -989,8 +1045,12 @@ function citaModal(c, isNew){
       patients.push(np); await savePatient(np); n.pacienteId=np.id; n.nombre=''; sel=np.id; }
     else if(n.pacienteId && n.telefono){ const p=patients.find(x=>x.id===n.pacienteId); if(p && !p.telefono){ p.telefono=n.telefono; await savePatient(p,true); } }
     if(!n.agendo) delete n.agendo; else { config.agenda.ultimoAgendo=n.agendo; }
+    if(isCx(c) && $('#ciReg',bg) && $('#ciReg',bg).checked && n.pacienteId){ const p=patients.find(x=>x.id===n.pacienteId); p.cirugias=p.cirugias||[];
+      let cx=n.cirugiaId&&p.cirugias.find(x=>x.id===n.cirugiaId); if(!cx){ cx={id:uid(), files:[]}; p.cirugias.push(cx); n.cirugiaId=cx.id; }
+      cx.fecha=n.fecha; if(n.hospital) cx.hospital=n.hospital; if(n.procedimiento && !cx.procedimientos) cx.procedimientos=n.procedimiento; if(n.motivo && !cx.equipo) cx.equipo=n.motivo; await savePatient(p,true); }
     Object.assign(c,n); await saveCita(c); return c; };
-  $('#ciSave',bg).onclick=async()=>{ if(await guardar()){ close(); render(); toast('Cita guardada'); } };
+  $('#ciSave',bg).onclick=async()=>{ if(await guardar()){ close(); render(); toast(isCx(c)?'Cirugía agendada':'Cita guardada'); } };
+  $('#ciCal',bg).onclick=async()=>{ const r=await guardar(); if(!r) return; await toCalendar([r], (isCx(r)?'Cirugia ':'Cita ')+citaNombre(r)+' '+r.fecha); render(); };
   $('#ciWA',bg).addEventListener('click',async e=>{ if(!$('#ciWA',bg).href){ e.preventDefault(); alert('Capture el teléfono del paciente.'); return; } if(EAPP){ e.preventDefault(); EAPP.openExternal($('#ciWA',bg).href); }
     c.recordatorio=Date.now(); if(!isNew||c.fecha) { const r=await guardar(); if(r){ render(); } } });
   if(!isNew){ $('#ciDel',bg).onclick=async()=>{ if(!confirm('¿Eliminar esta cita?')) return; c.deleted=true; await saveCita(c); close(); render(); };
@@ -1025,7 +1085,7 @@ const PROCS={ 'Hombro':['Reparación artroscópica del manguito rotador','Tenode
 function renderCirugias(p, el){
   const cs=[...(p.cirugias||[])].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
   const asc=[...(p.cirugias||[])].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
-  el.innerHTML=`<div class="row between" style="margin-bottom:14px"><span class="muted">${cs.length} cirugía(s)</span><button class="pri" data-act="newCirugia">+ Nueva cirugía</button></div>
+  el.innerHTML=`<div class="row between" style="margin-bottom:14px"><span class="muted">${cs.length} cirugía(s)</span><div class="row"><button class="cxbtn" data-act="cxNueva" data-pid="${p.id}">📅 Programar cirugía en la agenda</button><button class="pri" data-act="newCirugia">+ Registrar cirugía realizada</button></div></div>
   ${cs.map(c=>{ const n=asc.indexOf(c)+1; return `<div class="list-item surg" data-xid="${c.id}">
     <div class="lh"><div class="row"><b style="font-size:15px">Cirugía ${n}</b>${c.fecha?`<span class="tag pop">${esc(popTexto(c.fecha))}</span>`:''}</div>
       <button class="sm ghost danger" data-act="delCirugia" data-id="${c.id}">Eliminar</button></div>
@@ -1802,6 +1862,8 @@ async function openSettings(){
       <div><label>Inicio de consulta</label><input type="time" id="agIni" value="${esc(agCfg().inicio)}"></div><div><label>Fin de consulta</label><input type="time" id="agFin" value="${esc(agCfg().fin)}"></div>
       <div><label>Intervalo (min)</label><input type="number" id="agInt" step="5" value="${esc(agCfg().intervalo)}"></div><div><label>Código de país (WhatsApp)</label><input id="agPais" value="${esc(agCfg().codigoPais)}"></div>
       ${TIPOS_CITA.map(t=>`<div><label>Precio · ${t}</label><input type="number" step="50" data-precio="${esc(t)}" value="${esc((agCfg().precios||{})[t]??'')}"></div>`).join('')}
+      <div><label>Aviso antes de cada cita (min)</label><input type="number" id="agAvC" step="5" value="${esc(agCfg().avisoCita)}"></div><div><label>Aviso antes de cirugía (min)</label><input type="number" id="agAvX" step="15" value="${esc(agCfg().avisoCirugia)}"></div>
+      <div class="span2"><label style="margin-top:22px;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)"><input type="checkbox" id="agAvD" style="width:auto" ${agCfg().avisoCirugiaDiaAntes?'checked':''}> Avisar también el día anterior a cada cirugía</label></div>
       <div class="span4"><label>Mensaje de recordatorio ({nombre}, {dia}, {hora}, {fecha}, {doctor})</label><textarea id="agMsg" style="min-height:60px">${esc(agCfg().recordatorio)}</textarea></div></div></div>
     <div class="card"><h3>Guardado y nube</h3>
       <p class="muted" style="margin-top:0;font-size:13px">Todo se guarda en esta computadora. Para tener copia en la nube, elija una carpeta dentro de iCloud Drive, Google Drive o Dropbox: el expediente escribirá ahí cada cambio y, en otra Mac, al elegir la misma carpeta se cargan los pacientes.</p>
@@ -1812,9 +1874,9 @@ async function openSettings(){
       <div class="row" style="margin-top:12px"><button data-act="exportB">Exportar respaldo (.json)</button><button data-act="importB">Importar respaldo o cambios…</button></div>
     </div></div>`;
   document.body.appendChild(bg);
-  const agSave=()=>{ const a=agCfg(); a.inicio=$('#agIni').value||a.inicio; a.fin=$('#agFin').value||a.fin; a.intervalo=+$('#agInt').value||30; a.codigoPais=$('#agPais').value.replace(/\D/g,'')||'52'; a.recordatorio=$('#agMsg').value;
+  const agSave=()=>{ const a=agCfg(); a.inicio=$('#agIni').value||a.inicio; a.fin=$('#agFin').value||a.fin; a.intervalo=+$('#agInt').value||30; a.codigoPais=$('#agPais').value.replace(/\D/g,'')||'52'; a.recordatorio=$('#agMsg').value; a.avisoCita=+$('#agAvC').value||60; a.avisoCirugia=+$('#agAvX').value||120; a.avisoCirugiaDiaAntes=$('#agAvD').checked;
     a.precios={}; $$('[data-precio]').forEach(i=>{ if(i.value!=='') a.precios[i.dataset.precio]=+i.value; }); saveConfig(); };
-  ['agIni','agFin','agInt','agPais','agMsg'].forEach(i=>$('#'+i).onchange=agSave); $$('[data-precio]').forEach(i=>i.onchange=agSave);
+  ['agIni','agFin','agInt','agPais','agMsg','agAvC','agAvX','agAvD'].forEach(i=>$('#'+i).onchange=agSave); $$('[data-precio]').forEach(i=>i.onchange=agSave);
   $('#cfDoc').oninput=$('#cfSub').oninput=()=>{ config.doctor=$('#cfDoc').value; config.subtitulo=$('#cfSub').value; applyBrand(); };
   const close=async()=>{ config.doctor=$('#cfDoc').value; config.subtitulo=$('#cfSub').value; await saveConfig(); bg.remove(); RXP=null; render(); };
   let downOnBg=false; bg.addEventListener('pointerdown',e=>downOnBg=(e.target===bg));
@@ -1913,6 +1975,8 @@ document.addEventListener('click', async e=>{
     case 'agVerMañana': recordatoriosModal(); break;
     case 'citaNueva': { const cfg=agCfg(); const c={id:uid(), created:Date.now(), fecha:b.dataset.fecha||AG.fecha||today(), hora:b.dataset.hora||'', duracion:cfg.duracion, tipo:'Primera vez', estado:'Programada', pacienteId:b.dataset.pid||null};
         if(c.pacienteId){ const pp=patients.find(x=>x.id===c.pacienteId); c.tipo=(pp&&(pp.consultas||[]).length)?'Subsecuente':'Primera vez'; c.fecha=today(); } citaModal(c,true); } break;
+    case 'cxNueva': { const c={id:uid(), created:Date.now(), kind:'cirugia', fecha:b.dataset.fecha||AG.fecha||today(), hora:'07:00', duracion:120, tipo:'Cirugía', estado:'Programada', pacienteId:b.dataset.pid||null}; citaModal(c,true); } break;
+    case 'agICS': { const d0=today(); const l=vivas().filter(c=>c.fecha>=d0 && c.fecha<=addDays(d0,60) && c.estado!=='Cancelada'); if(!l.length){ toast('No hay citas próximas'); break; } await toCalendar(l, 'Agenda Expediente Clinico'); } break;
     case 'citaEditar': { const c=citas.find(x=>x.id===id); if(c) citaModal(c,false); } break;
     case 'newCirugia': p.cirugias=p.cirugias||[]; p.cirugias.push({id:uid(),fecha:today(),files:[]}); await savePatient(p); render(); break;
     case 'delCirugia': if(confirm('¿Eliminar esta cirugía y sus imágenes?')){ const c=p.cirugias.find(x=>x.id===id); for(const f of c.files||[]) await DB.del('files',f.id); p.cirugias=p.cirugias.filter(x=>x.id!==id); await savePatient(p); render(); } break;
@@ -1969,6 +2033,7 @@ function applyBrand(){ $('#brandName').textContent=config.doctor||'Expediente Cl
   if(navigator.storage?.persist) navigator.storage.persist();
   window.addEventListener('focus', ()=>{ if(Sync.ok) Sync.pull(true); });
   setInterval(()=>{ if(Sync.ok && !document.hidden) Sync.pull(true); }, 45000);
+  setInterval(revisarAvisos, 60000); setTimeout(revisarAvisos, 4000);
 })();
 </script>
 </body>
