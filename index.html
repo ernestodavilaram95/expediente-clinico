@@ -207,6 +207,28 @@ b.pos{color:var(--bad)}b.neg{color:var(--ok)}
 }
 .tag.pop{background:#ece6fb;color:#4b2a9a}
 .surg{border-left:4px solid #8b6fd6}
+.agbtn{width:100%;background:#1d6fa3!important;border-color:#1d6fa3!important;color:#fff!important;text-align:left;font-weight:600;padding:9px 12px}
+.agbtn.on{background:#f0a400!important;border-color:#f0a400!important;color:#1b2430!important}
+.ag-nav{margin:6px 0 10px;gap:6px}.ag-nav>button{padding:5px 11px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{border:0;border-radius:0;padding:6px 12px}.seg button.on{background:var(--pri);color:#fff}
+.ag-tot{display:flex;gap:10px;flex-wrap:wrap;padding-bottom:12px}.ag-tot div{background:#f3f6fa;border-radius:10px;padding:6px 12px;display:flex;flex-direction:column;min-width:100px}
+.ag-tot span{font-size:11.5px;color:var(--muted)}.ag-tot b{font-size:18px}.ag-tot .small b{font-size:14px}.ag-tot b.ok{color:var(--ok)}.ag-tot b.warn{color:var(--warn)}
+.slot{display:flex;border-bottom:1px solid var(--line);min-height:44px}.slot:last-child{border-bottom:0}.sh{width:58px;flex:0 0 58px;font-size:12.5px;color:var(--muted);padding:12px 0}.sc{flex:1;padding:5px 0;display:flex;flex-direction:column;gap:5px}
+.slot-add{border:1px dashed #d4dbe5;background:transparent;color:#9aa6b4;width:100%;padding:6px;border-radius:8px;opacity:.5}.slot-add:hover{opacity:1;border-color:var(--pri);color:var(--pri)}
+.cita{border-radius:9px;padding:7px 10px;cursor:pointer;background:#eaf3fb;border-left:4px solid var(--pri);font-size:13px}.cita:hover{filter:brightness(.97)}
+.cita .cm{font-size:12px;color:#4a5563;margin-top:2px}.cita .est{font-size:11px;font-weight:700;white-space:nowrap}
+.cita.e-conf{background:#e9f7ef;border-left-color:var(--ok)}.cita.e-sala{background:#fff4dc;border-left-color:#f0a400}.cita.e-ok{background:#eef0f3;border-left-color:#7b8794;opacity:.85}
+.cita.e-no{background:#fdecea;border-left-color:var(--bad)}.cita.e-can{background:#f4f4f4;border-left-color:#bbb;text-decoration:line-through;opacity:.6}
+.week{display:grid;grid-template-columns:repeat(7,minmax(130px,1fr));gap:8px;overflow-x:auto}.wday{background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:5px;min-height:200px}
+.wday.hoy{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri)}.wh{display:flex;flex-direction:column;cursor:pointer;padding:2px 4px 6px;border-bottom:1px solid var(--line)}.wh span{font-size:11.5px;color:var(--muted)}
+tr.clk{cursor:pointer}tr.clk:hover{background:#f6f9fc}
+.sug{position:absolute;left:0;right:0;top:62px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:5}.sug div{padding:8px 10px;cursor:pointer;font-size:13px}.sug div:hover{background:var(--pri2)}.sug:empty{display:none}
+.btnlink{display:inline-flex;align-items:center;gap:4px;border:1px solid #25d366;background:#25d366;color:#fff;border-radius:8px;padding:7px 12px;text-decoration:none;font-weight:600;font-size:13.5px;cursor:pointer}
+.btnlink.dis{background:#e8ece9;border-color:#d6ddd8;color:#8a948d}
+.tag.cita{background:#e3f0fb;color:var(--pri)}
+.week .cita .row{flex-wrap:wrap}.week .cita .est{display:none}.week .cita{font-size:12.5px}
+@media (max-width:820px){ .week{grid-template-columns:1fr} .ag-tot div{min-width:0;flex:1 1 30%} .ag-nav b{width:100%;order:9} .seg{order:10} }
+.cap{display:inline-block}.cap::first-letter{text-transform:uppercase}
 @media print{aside,.phead .tabs{display:none}}
 </style>
 </head>
@@ -214,6 +236,7 @@ b.pos{color:var(--bad)}b.neg{color:var(--ok)}
 <div class="app">
   <aside>
     <div class="brand"><b id="brandName">Expediente Clínico</b><span id="brandSub">Ortopedia del Deporte de Alto Rendimiento</span></div>
+    <div style="padding:12px 14px 0"><button id="btnAgenda" class="agbtn" data-act="agOpen">📅 Agenda <span id="agHoyN"></span></button></div>
     <div class="side-tools">
       <input id="search" placeholder="Buscar paciente…">
       <button id="btnNew">+ Nuevo</button>
@@ -420,8 +443,8 @@ if(EAPP){
 /* ============ base de datos local (IndexedDB) ============ */
 const DB = {
   db:null,
-  open(){ return new Promise((res,rej)=>{ const r=indexedDB.open('expediente-clinico',1);
-    r.onupgradeneeded=()=>{ const d=r.result; d.createObjectStore('patients',{keyPath:'id'}); d.createObjectStore('files',{keyPath:'id'}); d.createObjectStore('meta'); };
+  open(){ return new Promise((res,rej)=>{ const r=indexedDB.open('expediente-clinico',2);
+    r.onupgradeneeded=()=>{ const d=r.result; const has=n=>d.objectStoreNames.contains(n); if(!has('patients')) d.createObjectStore('patients',{keyPath:'id'}); if(!has('files')) d.createObjectStore('files',{keyPath:'id'}); if(!has('meta')) d.createObjectStore('meta'); if(!has('citas')) d.createObjectStore('citas',{keyPath:'id'}); };
     r.onsuccess=()=>{ this.db=r.result; res(); }; r.onerror=()=>rej(r.error); }); },
   tx(store, mode, fn){ return new Promise((res,rej)=>{ const t=this.db.transaction(store,mode); const s=t.objectStore(store); const out=fn(s); t.oncomplete=()=>res(out instanceof IDBRequest ? out.result : out); t.onerror=()=>rej(t.error); }); },
   all(store){ return this.tx(store,'readonly',s=>s.getAll()); },
@@ -520,10 +543,11 @@ const Sync = {
     }catch(e){ console.warn(e); this.fail(e); } },
   async writeConfig(){ if(!this.ok) return; try{ await this.writeJSON(this.handle,'configuracion.json',config); for(const id of [config.receta.fileId, config.receta.fontFileId]) if(id){ const f=await DB.get('files',id); if(f) await this.writeFile(f); } }catch(e){ this.fail(e); } },
   fail(e){ if(e && (e.name==='NotAllowedError'||e.name==='SecurityError')){ this.ok=false; this.badge(); } },
-  async pushAll(){ for(const p of patients) await this.writePatient(p); const del=await DB.get('meta','tombstones')||[]; const d=await this.dir('pacientes'); for(const t of del) await this.writeJSON(d,t.id+'.json',t); await this.writeConfig(); },
+  async pushAll(){ for(const p of patients) await this.writePatient(p); for(const c of citas) await this.writeCita(c); const del=await DB.get('meta','tombstones')||[]; const d=await this.dir('pacientes'); for(const t of del) await this.writeJSON(d,t.id+'.json',t); await this.writeConfig(); },
   async readFile(id){ const d=await this.dir('archivos'); const fh=await d.getFileHandle(id); const blob=await fh.getFile();
       let info={id,name:id,mime:blob.type}; try{ const m=await this.dir('archivos-info'); info=JSON.parse(await (await (await m.getFileHandle(id+'.json')).getFile()).text()); }catch(e){}
       return {id, name:info.name, mime:info.mime, blob:new Blob([blob],{type:info.mime})}; },
+  async writeCita(c){ if(!this.ok) return; try{ const d=await this.dir('agenda'); await this.writeJSON(d, c.id+'.json', c); }catch(e){ console.warn(e); this.fail(e); } },
   schedulePhone(){ if(!this.ok) return; clearTimeout(this._pt); this._pt=setTimeout(()=>this.writePhonePackage(), 20000); },
   async writePhonePackage(){ if(!this.ok) return; try{ const data=await buildPackage({kind:'paquete', deleted:await DB.get('meta','tombstones')||[], phone:true});
       await this.writeJSON(this.handle,'Expediente para iPhone.json',data); }catch(e){ console.warn(e); this.fail(e); } },
@@ -548,6 +572,8 @@ const Sync = {
           await DB.put('patients', r); if(loc) Object.assign(loc, r); else patients.push(r); changed++;
         }
       }
+      try{ const ad=await this.dir('agenda'); for await (const [name,h] of ad.entries()){ if(!name.endsWith('.json')) continue; let r; try{ r=JSON.parse(await (await h.getFile()).text()); }catch(e){ continue; }
+          const loc=citas.find(x=>x.id===r.id); if(!loc || (r.updated||0)>(loc.updated||0)){ await DB.put('citas',r); if(loc) Object.assign(loc,r); else citas.push(r); changed++; } } }catch(e){}
       try{ const c=JSON.parse(await (await (await this.handle.getFileHandle('configuracion.json')).getFile()).text());
         if((c.updated||0) > (config.updated||0)){ for(const id of [c.receta.fileId, c.receta.fontFileId]) if(id && !await DB.get('files',id)){ try{ await DB.put('files', await this.readFile(id)); }catch(e){} } config=c; await DB.put('meta',config,'config'); applyBrand(); changed++; } }catch(e){}
     }catch(e){ console.warn(e); this.fail(e); }
@@ -565,7 +591,7 @@ async function exportBackup(){
 const B64CACHE=new Map();
 async function fileB64(f){ const k=f.id+':'+f.blob.size; if(B64CACHE.has(k)) return B64CACHE.get(k); const v=await blobToB64(f.blob); B64CACHE.set(k,v); return v; }
 /* Paquete de datos: respaldo completo, paquete para el iPhone o cambios del iPhone */
-async function buildPackage({kind='respaldo', list=patients, deleted=[], skipIds=null, phone=false}={}){
+async function buildPackage({kind='respaldo', list=patients, deleted=[], skipIds=null, phone=false, citas:citasSel=null}={}){
   const ids=new Set(); list.forEach(p=>fileIdsOf(p).forEach(i=>ids.add(i)));
   const cfgIds=[config.receta.fileId, config.receta.fontFileId].filter(Boolean);
   if(kind!=='cambios') cfgIds.forEach(i=>ids.add(i));
@@ -577,12 +603,14 @@ async function buildPackage({kind='respaldo', list=patients, deleted=[], skipIds
   if(phone) for(const p of list) for(const c of p.cirugias||[]) for(const f of c.files||[]) if(/^video\//.test(f.mime)){ const r=await DB.get('files',f.id); if(r&&r.blob.size>40e6) heavy.add(f.id); }
   const files=[];
   for(const id of ids){ if(heavy.has(id) || (skipIds&&skipIds.has(id))) continue; const f=await DB.get('files',id); if(f) files.push({id:f.id,name:f.name,mime:f.mime,b64:await fileB64(f)}); }
-  return {app:'expediente-clinico', version:2, kind, exported:Date.now(), device:EAPP?'mac-app':(IS_TOUCH?'iphone':'navegador'), config: kind==='cambios'?null:config, patients:list, deleted, files, omitted:[...heavy]};
+  const citasPkg = kind==='cambios' ? (citasSel||[]) : citas;
+  return {app:'expediente-clinico', version:3, citas:citasPkg, kind, exported:Date.now(), device:EAPP?'mac-app':(IS_TOUCH?'iphone':'navegador'), config: kind==='cambios'?null:config, patients:list, deleted, files, omitted:[...heavy]};
 }
 async function importPackage(data){
   if(!data || data.app!=='expediente-clinico') throw new Error('El archivo no es de este expediente.');
   let nf=0; for(const x of data.files||[]) if(!await DB.get('files',x.id)){ await DB.put('files',{id:x.id,name:x.name,mime:x.mime,blob:b64ToBlob(x.b64,x.mime)}); nf++; }
   let n=0; for(const r of data.patients||[]){ const loc=patients.find(p=>p.id===r.id); if(!loc||(r.updated||0)>(loc.updated||0)){ await DB.put('patients',r); if(loc){ for(const k of Object.keys(loc)) if(!(k in r)) delete loc[k]; Object.assign(loc,r); } else patients.push(r); n++; Sync.writePatient(r);} }
+  for(const r of data.citas||[]){ const loc=citas.find(x=>x.id===r.id); if(!loc||(r.updated||0)>(loc.updated||0)){ await DB.put('citas',r); if(loc) Object.assign(loc,r); else citas.push(r); Sync.writeCita(r); n++; } }
   let nd=0; for(const t of data.deleted||[]){ const loc=patients.find(p=>p.id===t.id); if(loc && (loc.updated||0)<=t.updated){ patients=patients.filter(p=>p.id!==t.id); await DB.del('patients',t.id); nd++; if(current===t.id) current=null; } }
   if(data.config && (!config.updated || (data.config.updated||0)>config.updated)){ const keepFont=config.receta.fontFileId&&!data.config.receta.fontFileId; config={...data.config}; await DB.put('meta',config,'config'); applyBrand(); }
   renderList(); render(); return {n, nd, nf};
@@ -599,7 +627,7 @@ async function shareOrDownload(blob, name, title){
 }
 
 /* ---------- iPhone: sincronizar por iCloud ---------- */
-async function phoneChanges(){ const mark=await DB.get('meta','phoneMark')||0; const ts=(await DB.get('meta','tombstones')||[]).filter(t=>t.updated>mark); return {mark, list:patients.filter(p=>(p.updated||0)>mark), deleted:ts}; }
+async function phoneChanges(){ const mark=await DB.get('meta','phoneMark')||0; const ts=(await DB.get('meta','tombstones')||[]).filter(t=>t.updated>mark); return {mark, list:patients.filter(p=>(p.updated||0)>mark), deleted:ts, citas:citas.filter(c=>(c.updated||0)>mark)}; }
 async function openPhoneSync(){
   const at=await DB.get('meta','phoneImportAt'); const ch=await phoneChanges();
   const bg=document.createElement('div'); bg.className='modal-bg';
@@ -610,8 +638,8 @@ async function openPhoneSync(){
       <button class="pri" id="psOpen">Abrir archivo de iCloud…</button>
       <p class="muted" style="font-size:12.5px;margin-bottom:0">${at?'Última vez: '+new Date(at).toLocaleString('es-MX'):'Aún no ha abierto ningún paquete.'}</p></div>
     <div class="card"><h3>2 · Enviar a la Mac lo que hizo en el iPhone</h3>
-      <p class="muted" style="margin-top:-6px;font-size:13px">Pendientes: <b>${ch.list.length}</b> paciente(s)${ch.deleted.length?` y ${ch.deleted.length} eliminado(s)`:''}. En la hoja de compartir elija <b>«Guardar en Archivos»</b> y guárdelo en la <b>misma carpeta del expediente en iCloud Drive</b>; la Mac lo importa sola.</p>
-      <button class="pri" id="psSend" ${ch.list.length||ch.deleted.length?'':'disabled'}>Enviar cambios a la Mac</button></div>
+      <p class="muted" style="margin-top:-6px;font-size:13px">Pendientes: <b>${ch.list.length}</b> paciente(s)${ch.citas.length?`, <b>${ch.citas.length}</b> cita(s)`:''}${ch.deleted.length?` y ${ch.deleted.length} eliminado(s)`:''}. En la hoja de compartir elija <b>«Guardar en Archivos»</b> y guárdelo en la <b>misma carpeta del expediente en iCloud Drive</b>; la Mac lo importa sola.</p>
+      <button class="pri" id="psSend" ${ch.list.length||ch.deleted.length||ch.citas.length?'':'disabled'}>Enviar cambios a la Mac</button></div>
   </div>`;
   document.body.appendChild(bg);
   const close=()=>bg.remove(); bg.addEventListener('click',e=>{ if(e.target===bg||e.target.closest('[data-x]')) close(); });
@@ -623,7 +651,7 @@ async function openPhoneSync(){
     catch(e){ busy(null); alert('No se pudo abrir: '+e.message); } };
   $('#psSend',bg).onclick=async()=>{ busy('Preparando cambios…');
     try{ const c=await phoneChanges(); const base=new Set(await DB.get('meta','phoneBaseFiles')||[]);
-      const data=await buildPackage({kind:'cambios', list:c.list, deleted:c.deleted, skipIds:base});
+      const data=await buildPackage({kind:'cambios', list:c.list, deleted:c.deleted, skipIds:base, citas:c.citas});
       const d=new Date(), pad=n=>String(n).padStart(2,'0'); const name=`cambios-iphone-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
       busy(null); const r=await shareOrDownload(new Blob([JSON.stringify(data)],{type:'application/json'}), name, 'Cambios del expediente');
       if(r!=='cancel'){ await DB.put('meta',Date.now(),'phoneMark'); data.files.forEach(x=>base.add(x.id)); await DB.put('meta',[...base],'phoneBaseFiles'); close(); toast('Cambios enviados. Guárdelos en la carpeta del expediente en iCloud.'); } }
@@ -640,8 +668,9 @@ function renderList(){
     || `<div style="padding:16px;color:#8fb0c6;font-size:13px">${patients.length?'Sin resultados':(!Sync.supported&&IS_TOUCH?'Aún no hay pacientes en este iPhone. Pulse «📲 Sincronizar con la Mac» para traerlos.':'Aún no hay pacientes. Pulse «+ Nuevo».')}</div>`;
 }
 $('#search').addEventListener('input', renderList);
-$('#plist').addEventListener('click', e=>{ const it=e.target.closest('[data-pid]'); if(it){ current=it.dataset.pid; tab='ficha'; SC=null; renderList(); render(); } });
+$('#plist').addEventListener('click', e=>{ const it=e.target.closest('[data-pid]'); if(it){ if(mode==='agenda'){ mode='expediente'; document.body.classList.remove('mode-agenda'); $('#btnAgenda').classList.remove('on'); } current=it.dataset.pid; tab='ficha'; SC=null; renderList(); render(); } });
 $('#btnNew').addEventListener('click', async()=>{
+  if(mode==='agenda'){ mode='expediente'; document.body.classList.remove('mode-agenda'); $('#btnAgenda').classList.remove('on'); }
   const p={id:uid(), created:Date.now(), nombre:'', apellidos:'', expediente:String(patients.length+1).padStart(4,'0'), consultas:[], estudios:[], ejes:[], recetas:[]};
   patients.push(p); current=p.id; tab='ficha'; await savePatient(p); render(); setTimeout(()=>$('[data-f="nombre"]')?.focus(),50);
 });
@@ -658,12 +687,16 @@ function headerMeta(p){
   if(p.alcohol && p.alcohol!=='No consume') tags.push(`<span class="tag warn">Alcohol: ${esc(p.alcohol.toLowerCase())}</span>`);
   const ult=[...(p.cirugias||[])].filter(c=>c.fecha&&c.procedimientos).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
   if(ult) tags.push(`<span class="tag pop">🩹 ${esc(popTexto(ult.fecha))}${ult.procedimientos?' · '+esc(ult.procedimientos.split('\n')[0].slice(0,48)):''}</span>`);
+  const prox=vivas().filter(c=>c.pacienteId===p.id&&c.fecha>=today()&&!['Cancelada','Atendida','No asistió'].includes(c.estado)).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora))[0];
+  if(prox) tags.push(`<span class="tag cita">📅 Próxima cita: ${esc(prox.fecha===today()?'hoy':fmtDate(prox.fecha))} ${esc(prox.hora)}</span>`);
   if(p.alergias) tags.push(`<span class="tag bad">⚠︎ Alergias: ${esc(p.alergias)}</span>`);
   const basic=[p.fechaNac?age(p.fechaNac)+' años':'', p.sexo, p.dominancia, imc(p)?'IMC '+imc(p):'', p.telefono].filter(Boolean).map(esc).join(' · ');
   return `<span>${basic||'Complete la ficha del paciente'}</span> ${tags.join(' ')}`;
 }
 function render(){
   axisTeardown();
+  const hn=vivas().filter(c=>c.fecha===today()&&c.estado!=='Cancelada').length; const hb=$('#agHoyN'); if(hb) hb.textContent=hn?`· ${hn} hoy`:'';
+  if(mode==='agenda'){ renderAgenda($('#main')); return; }
   const p=P(); const m=$('#main'); document.body.classList.toggle('has-patient', !!p);
   if(!p){ m.innerHTML=`<div class="empty"><div style="font-size:42px">🩺</div><div>Seleccione un paciente o cree uno nuevo.</div><button class="pri" onclick="$('#btnNew').click()">+ Nuevo paciente</button></div>`; return; }
   m.innerHTML = `
@@ -713,7 +746,8 @@ function renderFicha(p, el){
     ${field('alergias','Alergias',p,'text','span2')}
     ${field('app','Otros antecedentes personales patológicos',p,'textarea')}${field('quirurgicos','Antecedentes quirúrgicos y traumáticos',p,'textarea')}
     ${field('medicamentos','Medicamentos actuales',p,'textarea')}${field('notas','Notas',p,'textarea')}
-  </div></div>`;
+  </div></div>
+  ${citasPacienteHTML(p)}`;
   const refresh=()=>{ $('#pmeta').innerHTML=headerMeta(p); $('#imcOut').value=imc(p)??''; $('#pyOut').value=packYears(p)??''; };
   el.addEventListener('input', e=>{ const k=e.target.dataset.f; if(!k) return; p[k]=e.target.value; savePatientSoon(p);
     if(['nombre','apellidos'].includes(k)) $('.phead h1').textContent=fullName(p); refresh(); });
@@ -827,6 +861,159 @@ function renderConsultas(p, el){
   el.addEventListener('click', e=>{ const m=e.target.closest('[data-man]'); if(!m) return; const [ex,r]=E(e); ex.m=ex.m||{};
     const s=MSTATE[(MSTATE.indexOf(ex.m[m.dataset.man]||'')+1)%3]; if(s) ex.m[m.dataset.man]=s; else delete ex.m[m.dataset.man];
     m.className='mchip '+(s==='+'?'pos':s==='−'?'neg':''); $('b',m).textContent=s||'·'; upd(ex,r); });
+}
+
+/* ============ AGENDA ============ */
+let citas=[];            // incluye eliminadas (deleted:true) para sincronizar
+let mode='expediente';   // 'expediente' | 'agenda'
+let AG={fecha:today(), vista:'dia'};
+const ESTADOS=['Programada','Confirmada','En sala de espera','Atendida','No asistió','Cancelada'];
+const EST_CLS={'Programada':'e-prog','Confirmada':'e-conf','En sala de espera':'e-sala','Atendida':'e-ok','No asistió':'e-no','Cancelada':'e-can'};
+const TIPOS_CITA=['Primera vez','Subsecuente','Postoperatorio','Procedimiento / infiltración','Cirugía','Valoración preoperatoria'];
+const FORMAS=['Efectivo','Tarjeta','Transferencia','Aseguradora','Cortesía'];
+const AGENDA_DEFAULT={inicio:'08:00', fin:'20:00', intervalo:30, duracion:30, precios:{'Primera vez':0,'Subsecuente':0,'Postoperatorio':0}, codigoPais:'52',
+  recordatorio:'Hola {nombre}, le recordamos su cita con el {doctor} el {dia} a las {hora}. Por favor confirme su asistencia respondiendo a este mensaje. ¡Gracias!'};
+const vivas=()=>citas.filter(c=>!c.deleted);
+const money=n=>'$'+(Math.round((+n||0)*100)/100).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});
+const addDays=(iso,n)=>{ const d=new Date(iso+'T12:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+const DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const fechaLarga=iso=>{ const d=new Date(iso+'T12:00'); return `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]}`; };
+const toMin=h=>{ const [a,b]=(h||'0:0').split(':').map(Number); return a*60+b; };
+const toHora=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+function citaNombre(c){ const p=c.pacienteId&&patients.find(x=>x.id===c.pacienteId); return p?fullName(p):(c.nombre||'Sin nombre'); }
+function citaTel(c){ const p=c.pacienteId&&patients.find(x=>x.id===c.pacienteId); return (c.telefono||p?.telefono||'').trim(); }
+function agCfg(){ config.agenda=Object.assign(JSON.parse(JSON.stringify(AGENDA_DEFAULT)), config.agenda||{}); return config.agenda; }
+
+async function saveCita(c){ c.updated=Date.now(); await DB.put('citas',c); const i=citas.findIndex(x=>x.id===c.id); if(i>=0) citas[i]=c; else citas.push(c); Sync.writeCita(c); Sync.schedulePhone(); }
+function totales(list){ const t={n:0, cobrado:0, pendiente:0, porForma:{}}; for(const c of list){ if(c.estado==='Cancelada') continue; t.n++; const m=+c.monto||0;
+    if(c.pagado){ t.cobrado+=m; t.porForma[c.formaPago||'Sin especificar']=(t.porForma[c.formaPago||'Sin especificar']||0)+m; } else if(c.estado!=='No asistió') t.pendiente+=m; } return t; }
+
+function setMode(m){ mode=m; document.body.classList.toggle('mode-agenda', m==='agenda'); $('#btnAgenda').classList.toggle('on', m==='agenda'); if(m==='agenda'){ current=null; renderList(); } render(); }
+
+function renderAgenda(m){
+  const cfg=agCfg(); document.body.classList.add('has-patient');
+  const f=AG.fecha;
+  let rango, titulo;
+  if(AG.vista==='dia'){ rango=[f,f]; titulo=fechaLarga(f); }
+  else if(AG.vista==='semana'){ const d=new Date(f+'T12:00'); const lun=addDays(f, -((d.getDay()+6)%7)); rango=[lun, addDays(lun,6)]; titulo=`Semana del ${fechaLarga(lun)}`; }
+  else { const ini=f.slice(0,8)+'01'; const d=new Date(ini+'T12:00'); d.setMonth(d.getMonth()+1); d.setDate(0); rango=[ini, d.toISOString().slice(0,10)]; titulo=`${MESES[+f.slice(5,7)-1]} ${f.slice(0,4)}`; }
+  const lista=vivas().filter(c=>c.fecha>=rango[0]&&c.fecha<=rango[1]).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+  const T=totales(lista);
+  const mañana=addDays(today(),1); const pendRec=vivas().filter(c=>c.fecha===mañana && !['Cancelada','Atendida'].includes(c.estado) && !c.recordatorio);
+  m.innerHTML=`<div class="phead"><div class="row between"><div class="row" style="gap:6px;flex-wrap:nowrap"><button class="mback ghost" data-act="agBack">‹</button><h1>📅 Agenda</h1></div>
+      <button class="pri" data-act="citaNueva" data-fecha="${f}">+ Nueva cita</button></div>
+    <div class="row ag-nav"><button data-act="agMove" data-d="-1">‹</button><button data-act="agHoy">Hoy</button><button data-act="agMove" data-d="1">›</button>
+      <input type="date" id="agFecha" value="${f}" style="width:160px"><b class="cap" style="margin-left:4px">${esc(titulo)}</b>
+      <span style="flex:1"></span><div class="seg">${[['dia','Día'],['semana','Semana'],['mes','Mes']].map(([k,l])=>`<button class="${AG.vista===k?'on':''}" data-act="agVista" data-v="${k}">${l}</button>`).join('')}</div></div>
+    <div class="ag-tot"><div><span>Citas</span><b>${T.n}</b></div><div><span>Cobrado</span><b class="ok">${money(T.cobrado)}</b></div><div><span>Por cobrar</span><b class="warn">${money(T.pendiente)}</b></div>
+      ${Object.entries(T.porForma).map(([k,v])=>`<div class="small"><span>${esc(k)}</span><b>${money(v)}</b></div>`).join('')}</div></div>
+  <div class="content" id="content">
+    ${pendRec.length&&AG.vista==='dia'?`<div class="banner"><span>📲 <b>${pendRec.length}</b> cita(s) de mañana sin recordatorio enviado.</span><button class="sm pri" data-act="agVerMañana">Enviar recordatorios</button></div>`:''}
+    <div id="agBody"></div></div>`;
+  const body=$('#agBody');
+  if(AG.vista==='dia'){
+    const ini=toMin(cfg.inicio), fin=toMin(cfg.fin), step=+cfg.intervalo||30; const slots=[];
+    const delDia=lista; const usadas=new Set();
+    for(let t=ini;t<fin;t+=step){ const h=toHora(t); const enSlot=delDia.filter(c=>{ const cm=toMin(c.hora); return cm>=t&&cm<t+step; }); enSlot.forEach(c=>usadas.add(c.id));
+      slots.push(`<div class="slot"><div class="sh">${h}</div><div class="sc">${enSlot.map(citaCard).join('')||`<button class="slot-add" data-act="citaNueva" data-fecha="${f}" data-hora="${h}">+</button>`}</div></div>`); }
+    const fuera=delDia.filter(c=>!usadas.has(c.id));
+    body.innerHTML=`<div class="card" style="padding:6px 10px">${slots.join('')}${fuera.length?`<div class="slot"><div class="sh">Otras</div><div class="sc">${fuera.map(citaCard).join('')}</div></div>`:''}</div>`;
+  } else if(AG.vista==='semana'){
+    const dias=[...Array(7)].map((_,i)=>addDays(rango[0],i));
+    body.innerHTML=`<div class="week">${dias.map(d=>{ const l=lista.filter(c=>c.fecha===d); const t=totales(l);
+      return `<div class="wday ${d===today()?'hoy':''}"><div class="wh" data-act="agIrDia" data-f="${d}"><b class="cap">${DIAS[new Date(d+'T12:00').getDay()].slice(0,3)} ${+d.slice(8)}</b><span>${t.n} · ${money(t.cobrado)}</span></div>
+        ${l.map(citaCard).join('')}<button class="slot-add" data-act="citaNueva" data-fecha="${d}">+</button></div>`; }).join('')}</div>`;
+  } else {
+    const dias=[]; for(let d=rango[0]; d<=rango[1]; d=addDays(d,1)) dias.push(d);
+    body.innerHTML=`<div class="card"><table><tr><th>Día</th><th>Citas</th><th>Atendidas</th><th>Cobrado</th><th>Por cobrar</th></tr>
+      ${dias.map(d=>{ const l=lista.filter(c=>c.fecha===d); if(!l.length) return ''; const t=totales(l); return `<tr class="clk" data-act="agIrDia" data-f="${d}"><td class="cap">${fechaLarga(d)}</td><td>${t.n}</td><td>${l.filter(c=>c.estado==='Atendida').length}</td><td><b>${money(t.cobrado)}</b></td><td>${money(t.pendiente)}</td></tr>`; }).join('')||'<tr><td colspan="5" class="muted">Sin citas este mes.</td></tr>'}
+      <tr style="background:#f3f6fa"><td><b>Total del mes</b></td><td><b>${T.n}</b></td><td><b>${lista.filter(c=>c.estado==='Atendida').length}</b></td><td><b>${money(T.cobrado)}</b></td><td><b>${money(T.pendiente)}</b></td></tr></table></div>`;
+  }
+  $('#agFecha').onchange=e=>{ if(e.target.value){ AG.fecha=e.target.value; render(); } };
+}
+function citaCard(c){
+  const p=c.pacienteId&&patients.find(x=>x.id===c.pacienteId);
+  return `<div class="cita ${EST_CLS[c.estado]||''}" data-act="citaEditar" data-id="${c.id}">
+    <div class="row between" style="flex-wrap:nowrap"><b>${esc(c.hora||'')} · ${esc(citaNombre(c))}</b><span class="est">${esc(c.estado||'Programada')}</span></div>
+    <div class="cm">${esc([c.tipo, c.motivo].filter(Boolean).join(' · '))}${p&&p.deporte?` · 🏅 ${esc(p.deporte)}`:''}</div>
+    <div class="cm">${c.monto?`${money(c.monto)} ${c.pagado?'✓ pagado'+(c.formaPago?' ('+esc(c.formaPago)+')':''):'· por cobrar'}`:''}${c.recordatorio?' · 📲 recordado':''}${c.agendo?` · agendó ${esc(c.agendo)}`:''}</div></div>`;
+}
+function waLink(c){ const cfg=agCfg(); let tel=citaTel(c).replace(/\D/g,''); if(!tel) return null; if(tel.length===10) tel=(cfg.codigoPais||'52')+tel;
+  const txt=cfg.recordatorio.replace(/\{nombre\}/g, citaNombre(c).split(' ')[0]).replace(/\{doctor\}/g, config.doctor||'').replace(/\{dia\}/g, fechaLarga(c.fecha)).replace(/\{hora\}/g, c.hora||'').replace(/\{fecha\}/g, fmtDate(c.fecha));
+  return `https://wa.me/${tel}?text=${encodeURIComponent(txt)}`; }
+
+function citaModal(c, isNew){
+  const cfg=agCfg(); const bg=document.createElement('div'); bg.className='modal-bg';
+  const pac=c.pacienteId&&patients.find(x=>x.id===c.pacienteId);
+  bg.innerHTML=`<div class="modal" style="width:640px">
+    <div class="row between"><h2>${isNew?'Nueva cita':'Cita'}</h2><button class="ghost" data-x>✕</button></div>
+    <div class="grid g2">
+      <div class="span2" style="position:relative"><label>Paciente</label><input id="ciPac" autocomplete="off" placeholder="Buscar expediente o escribir nombre de paciente nuevo" value="${esc(pac?fullName(pac):(c.nombre||''))}">
+        <div id="ciSug" class="sug"></div><div id="ciPacInfo" class="muted" style="font-size:12px;margin-top:4px">${pac?'✓ Ligada al expediente':''}</div></div>
+      <div><label>Teléfono (WhatsApp)</label><input id="ciTel" type="tel" value="${esc(c.telefono||pac?.telefono||'')}"></div>
+      <div><label>Tipo de consulta</label><select id="ciTipo">${TIPOS_CITA.map(t=>`<option ${c.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label>Fecha</label><input id="ciFecha" type="date" value="${esc(c.fecha)}"></div>
+      <div class="row" style="gap:8px;flex-wrap:nowrap"><div style="flex:1"><label>Hora</label><input id="ciHora" type="time" step="300" value="${esc(c.hora)}"></div><div style="flex:1"><label>Duración (min)</label><input id="ciDur" type="number" step="5" value="${esc(c.duracion||cfg.duracion)}"></div></div>
+      <div class="span2"><label>Motivo</label><input id="ciMot" value="${esc(c.motivo||'')}" placeholder="Dolor de hombro derecho, control POP…"></div>
+      <div><label>Estado</label><select id="ciEst">${ESTADOS.map(t=>`<option ${(c.estado||'Programada')===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label>Agendó</label><input id="ciAg" value="${esc(c.agendo||'')}" placeholder="Nombre del asistente"></div>
+      <div><label>Cobro ($)</label><input id="ciMonto" type="number" step="50" min="0" value="${esc(c.monto??'')}"></div>
+      <div class="row" style="gap:8px;flex-wrap:nowrap;align-items:flex-end"><label style="margin:0 0 9px;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)"><input id="ciPag" type="checkbox" style="width:auto" ${c.pagado?'checked':''}> Pagado</label>
+        <div style="flex:1"><label>Forma de pago</label><select id="ciForma"><option></option>${FORMAS.map(t=>`<option ${c.formaPago===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
+      <div class="span2"><label>Notas</label><textarea id="ciNotas" style="min-height:50px">${esc(c.notas||'')}</textarea></div>
+    </div>
+    <div class="row" style="margin-top:14px;flex-wrap:wrap">
+      <button class="pri" id="ciSave">Guardar</button>
+      <a class="btnlink" id="ciWA" target="_blank" rel="noopener">📲 Recordatorio por WhatsApp</a>
+      ${!isNew?`<button id="ciExp">Abrir expediente</button><button class="ghost danger" id="ciDel">Eliminar cita</button>`:''}
+    </div></div>`;
+  document.body.appendChild(bg);
+  let sel=pac?pac.id:null;
+  const close=()=>bg.remove(); bg.addEventListener('click',e=>{ if(e.target===bg||e.target.closest('[data-x]')) close(); });
+  const precio=()=>{ const pr=(cfg.precios||{})[$('#ciTipo',bg).value]; if(isNew && pr && !$('#ciMonto',bg).value) $('#ciMonto',bg).value=pr; };
+  precio(); $('#ciTipo',bg).onchange=()=>{ if(isNew){ $('#ciMonto',bg).value=''; precio(); } };
+  const sug=$('#ciSug',bg);
+  $('#ciPac',bg).oninput=e=>{ sel=null; $('#ciPacInfo',bg).textContent='Paciente nuevo: se creará su expediente al guardar.'; const q=e.target.value.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    if(q.length<2){ sug.innerHTML=''; return; }
+    const r=patients.filter(p=>fullName(p).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').includes(q)).slice(0,6);
+    sug.innerHTML=r.map(p=>`<div data-sp="${p.id}"><b>${esc(fullName(p))}</b> <span class="muted">${p.telefono?esc(p.telefono):''}${p.expediente?' · Exp. '+esc(p.expediente):''}</span></div>`).join(''); };
+  sug.onclick=e=>{ const it=e.target.closest('[data-sp]'); if(!it) return; const p=patients.find(x=>x.id===it.dataset.sp); sel=p.id; $('#ciPac',bg).value=fullName(p); if(p.telefono) $('#ciTel',bg).value=p.telefono; $('#ciPacInfo',bg).textContent='✓ Ligada al expediente'; sug.innerHTML=''; updWA(); };
+  const leer=()=>({...c, pacienteId:sel, nombre:sel?'':$('#ciPac',bg).value.trim(), telefono:$('#ciTel',bg).value.trim(), tipo:$('#ciTipo',bg).value, fecha:$('#ciFecha',bg).value, hora:$('#ciHora',bg).value,
+    duracion:+$('#ciDur',bg).value||cfg.duracion, motivo:$('#ciMot',bg).value.trim(), estado:$('#ciEst',bg).value, agendo:$('#ciAg',bg).value.trim(), monto:$('#ciMonto',bg).value===''?'':+$('#ciMonto',bg).value,
+    pagado:$('#ciPag',bg).checked, formaPago:$('#ciForma',bg).value, notas:$('#ciNotas',bg).value});
+  const updWA=()=>{ const l=waLink(leer()); const a=$('#ciWA',bg); if(l){ a.href=l; a.classList.remove('dis'); } else { a.removeAttribute('href'); a.classList.add('dis'); } };
+  ['ciTel','ciFecha','ciHora','ciPac'].forEach(i=>$('#'+i,bg).addEventListener('input',updWA)); updWA();
+  $('#ciPag',bg).onchange=e=>{ if(e.target.checked && !$('#ciForma',bg).value) $('#ciForma',bg).value='Efectivo'; };
+  const guardar=async()=>{ const n=leer(); if(!n.fecha||!n.hora){ alert('Indique fecha y hora.'); return null; } if(!n.pacienteId&&!n.nombre){ alert('Indique el paciente.'); return null; }
+    if(!n.pacienteId && n.nombre){ const parts=n.nombre.split(/\s+/); const np={id:uid(), created:Date.now(), nombre:parts.slice(0,Math.max(1,parts.length-2)).join(' '), apellidos:parts.length>2?parts.slice(-2).join(' '):(parts[1]||''), telefono:n.telefono, expediente:String(patients.length+1).padStart(4,'0'), consultas:[], estudios:[], ejes:[], recetas:[]};
+      patients.push(np); await savePatient(np); n.pacienteId=np.id; n.nombre=''; sel=np.id; }
+    else if(n.pacienteId && n.telefono){ const p=patients.find(x=>x.id===n.pacienteId); if(p && !p.telefono){ p.telefono=n.telefono; await savePatient(p,true); } }
+    if(!n.agendo) delete n.agendo; else { config.agenda.ultimoAgendo=n.agendo; }
+    Object.assign(c,n); await saveCita(c); return c; };
+  $('#ciSave',bg).onclick=async()=>{ if(await guardar()){ close(); render(); toast('Cita guardada'); } };
+  $('#ciWA',bg).addEventListener('click',async e=>{ if(!$('#ciWA',bg).href){ e.preventDefault(); alert('Capture el teléfono del paciente.'); return; } if(EAPP){ e.preventDefault(); EAPP.openExternal($('#ciWA',bg).href); }
+    c.recordatorio=Date.now(); if(!isNew||c.fecha) { const r=await guardar(); if(r){ render(); } } });
+  if(!isNew){ $('#ciDel',bg).onclick=async()=>{ if(!confirm('¿Eliminar esta cita?')) return; c.deleted=true; await saveCita(c); close(); render(); };
+    $('#ciExp',bg).onclick=async()=>{ const r=await guardar(); if(!r) return; close(); mode='expediente'; document.body.classList.remove('mode-agenda'); $('#btnAgenda').classList.remove('on'); current=r.pacienteId; tab='ficha'; renderList(); render(); }; }
+  if(!c.agendo && config.agenda.ultimoAgendo) $('#ciAg',bg).value=config.agenda.ultimoAgendo;
+  if(!IS_TOUCH) setTimeout(()=>$('#ciPac',bg).focus(),50);
+}
+function recordatoriosModal(){
+  const mañana=addDays(today(),1); const l=vivas().filter(c=>c.fecha===mañana && !['Cancelada','Atendida'].includes(c.estado)).sort((a,b)=>a.hora.localeCompare(b.hora));
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal" style="width:560px"><div class="row between"><h2>📲 Recordatorios de mañana</h2><button class="ghost" data-x>✕</button></div>
+    <p class="muted" style="margin-top:-6px;font-size:13px">Toque cada botón: se abre WhatsApp con el mensaje listo; solo pulse enviar.</p>
+    ${l.map(c=>{ const w=waLink(c); return `<div class="list-item" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b>${esc(c.hora)} · ${esc(citaNombre(c))}</b><div class="muted" style="font-size:12px">${esc(citaTel(c)||'Sin teléfono')}${c.recordatorio?' · ✓ enviado':''}</div></div>
+      ${w?`<a class="btnlink" href="${w}" target="_blank" rel="noopener" data-rec="${c.id}">WhatsApp</a>`:'<span class="muted" style="font-size:12px">Falta teléfono</span>'}</div>`; }).join('')||'<p class="muted">No hay citas para mañana.</p>'}</div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click',async e=>{ if(e.target===bg||e.target.closest('[data-x]')){ bg.remove(); render(); return; }
+    const a=e.target.closest('[data-rec]'); if(a){ if(EAPP){ e.preventDefault(); EAPP.openExternal(a.href); } const c=citas.find(x=>x.id===a.dataset.rec); c.recordatorio=Date.now(); await saveCita(c); a.textContent='✓ Enviado'; } });
+}
+function citasPacienteHTML(p){
+  const l=vivas().filter(c=>c.pacienteId===p.id).sort((a,b)=>(b.fecha+b.hora).localeCompare(a.fecha+a.hora)); const t=totales(l);
+  return `<div class="card"><div class="row between"><h3 style="margin:0">📅 Citas</h3><button class="sm pri" data-act="citaNueva" data-pid="${p.id}">+ Agendar cita</button></div>
+    ${l.length?`<table style="margin-top:10px"><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Estado</th><th>Cobro</th></tr>${l.map(c=>`<tr class="clk" data-act="citaEditar" data-id="${c.id}"><td>${fmtDate(c.fecha)}</td><td>${esc(c.hora)}</td><td>${esc(c.tipo||'')}</td><td>${esc(c.estado||'')}</td><td>${c.monto?money(c.monto)+(c.pagado?' ✓':' pendiente'):''}</td></tr>`).join('')}</table>
+    <p class="muted" style="font-size:12.5px;margin:8px 0 0">Total pagado por el paciente: <b>${money(t.cobrado)}</b>${t.pendiente?` · por cobrar ${money(t.pendiente)}`:''}</p>`:'<p class="muted" style="margin:8px 0 0">Sin citas.</p>'}</div>`;
 }
 
 /* ---------- Cirugías ---------- */
@@ -1611,6 +1798,11 @@ async function openSettings(){
       <div id="rxFields" class="row" style="margin-bottom:10px"></div>
       <div style="overflow:auto;max-height:62vh;background:#eef1f5;padding:10px;border-radius:8px;text-align:center"><div class="rx-prev" id="rxPrev"><span class="muted" style="display:block;padding:40px">Sin PDF cargado</span></div></div>
       <div class="row" style="margin-top:10px"><button id="rxTest">Generar receta de prueba</button>${EAPP?'<button class="ghost" onclick="EAPP.showRecetas()">Abrir carpeta de recetas</button>':''}</div></div>
+    <div class="card"><h3>📅 Agenda</h3><div class="grid g4">
+      <div><label>Inicio de consulta</label><input type="time" id="agIni" value="${esc(agCfg().inicio)}"></div><div><label>Fin de consulta</label><input type="time" id="agFin" value="${esc(agCfg().fin)}"></div>
+      <div><label>Intervalo (min)</label><input type="number" id="agInt" step="5" value="${esc(agCfg().intervalo)}"></div><div><label>Código de país (WhatsApp)</label><input id="agPais" value="${esc(agCfg().codigoPais)}"></div>
+      ${TIPOS_CITA.map(t=>`<div><label>Precio · ${t}</label><input type="number" step="50" data-precio="${esc(t)}" value="${esc((agCfg().precios||{})[t]??'')}"></div>`).join('')}
+      <div class="span4"><label>Mensaje de recordatorio ({nombre}, {dia}, {hora}, {fecha}, {doctor})</label><textarea id="agMsg" style="min-height:60px">${esc(agCfg().recordatorio)}</textarea></div></div></div>
     <div class="card"><h3>Guardado y nube</h3>
       <p class="muted" style="margin-top:0;font-size:13px">Todo se guarda en esta computadora. Para tener copia en la nube, elija una carpeta dentro de iCloud Drive, Google Drive o Dropbox: el expediente escribirá ahí cada cambio y, en otra Mac, al elegir la misma carpeta se cargan los pacientes.</p>
       <div class="row">${Sync.handle?`<span class="pill">Carpeta: ${esc(Sync.handle.name)}${Sync.ok?'':' (desconectada)'}</span>`:''}
@@ -1620,6 +1812,9 @@ async function openSettings(){
       <div class="row" style="margin-top:12px"><button data-act="exportB">Exportar respaldo (.json)</button><button data-act="importB">Importar respaldo o cambios…</button></div>
     </div></div>`;
   document.body.appendChild(bg);
+  const agSave=()=>{ const a=agCfg(); a.inicio=$('#agIni').value||a.inicio; a.fin=$('#agFin').value||a.fin; a.intervalo=+$('#agInt').value||30; a.codigoPais=$('#agPais').value.replace(/\D/g,'')||'52'; a.recordatorio=$('#agMsg').value;
+    a.precios={}; $$('[data-precio]').forEach(i=>{ if(i.value!=='') a.precios[i.dataset.precio]=+i.value; }); saveConfig(); };
+  ['agIni','agFin','agInt','agPais','agMsg'].forEach(i=>$('#'+i).onchange=agSave); $$('[data-precio]').forEach(i=>i.onchange=agSave);
   $('#cfDoc').oninput=$('#cfSub').oninput=()=>{ config.doctor=$('#cfDoc').value; config.subtitulo=$('#cfSub').value; applyBrand(); };
   const close=async()=>{ config.doctor=$('#cfDoc').value; config.subtitulo=$('#cfSub').value; await saveConfig(); bg.remove(); RXP=null; render(); };
   let downOnBg=false; bg.addEventListener('pointerdown',e=>downOnBg=(e.target===bg));
@@ -1709,6 +1904,16 @@ document.addEventListener('click', async e=>{
     case 'saveScale': { const S=SCALES[SC.scale]; const R=S.calc(SC.values); if(!scaleComplete(S,SC.values)&&!confirm('Faltan reactivos por contestar. ¿Guardar de todos modos?')) break;
         p.escalas=p.escalas||[]; const rec={id:SC.id||uid(), scale:SC.scale, fecha:SC.fecha, lado:SC.lado||'', momento:SC.momento||'', values:SC.values, score:R.s, max:R.max, interp:R.i||''};
         const i=p.escalas.findIndex(x=>x.id===rec.id); if(i>=0) p.escalas[i]=rec; else p.escalas.push(rec); SC=null; await savePatient(p); render(); toast('Escala guardada'); } break;
+    case 'agOpen': setMode(mode==='agenda'&&!IS_TOUCH?'expediente':'agenda'); break;
+    case 'agBack': mode='expediente'; document.body.classList.remove('mode-agenda'); $('#btnAgenda').classList.remove('on'); current=null; renderList(); render(); break;
+    case 'agMove': { const n=+b.dataset.d; AG.fecha= AG.vista==='dia'?addDays(AG.fecha,n): AG.vista==='semana'?addDays(AG.fecha,7*n): (()=>{ const d=new Date(AG.fecha.slice(0,8)+'15T12:00'); d.setMonth(d.getMonth()+n); return d.toISOString().slice(0,10); })(); render(); } break;
+    case 'agHoy': AG.fecha=today(); render(); break;
+    case 'agVista': AG.vista=b.dataset.v; render(); break;
+    case 'agIrDia': AG.fecha=b.dataset.f; AG.vista='dia'; render(); break;
+    case 'agVerMañana': recordatoriosModal(); break;
+    case 'citaNueva': { const cfg=agCfg(); const c={id:uid(), created:Date.now(), fecha:b.dataset.fecha||AG.fecha||today(), hora:b.dataset.hora||'', duracion:cfg.duracion, tipo:'Primera vez', estado:'Programada', pacienteId:b.dataset.pid||null};
+        if(c.pacienteId){ const pp=patients.find(x=>x.id===c.pacienteId); c.tipo=(pp&&(pp.consultas||[]).length)?'Subsecuente':'Primera vez'; c.fecha=today(); } citaModal(c,true); } break;
+    case 'citaEditar': { const c=citas.find(x=>x.id===id); if(c) citaModal(c,false); } break;
     case 'newCirugia': p.cirugias=p.cirugias||[]; p.cirugias.push({id:uid(),fecha:today(),files:[]}); await savePatient(p); render(); break;
     case 'delCirugia': if(confirm('¿Eliminar esta cirugía y sus imágenes?')){ const c=p.cirugias.find(x=>x.id===id); for(const f of c.files||[]) await DB.del('files',f.id); p.cirugias=p.cirugias.filter(x=>x.id!==id); await savePatient(p); render(); } break;
     case 'addSurgFiles': { const fs=await pickFiles('image/*,video/*,application/pdf'); if(fs.length) await addSurgFiles(p,id,fs); } break;
@@ -1756,13 +1961,14 @@ function applyBrand(){ $('#brandName').textContent=config.doctor||'Expediente Cl
   if(config.receta.cierre && config.receta.cierre.l2==='Dr Ernesto Dávila Ramírez') config.receta.cierre.l2='Dr. Ernesto Dávila Ramírez';
   for(const k of ['fechaFmt','cierre','v']) if(config.receta[k]===undefined) config.receta[k]=JSON.parse(JSON.stringify(DEFAULT_CONFIG.receta[k]));
   if(!config.receta.fileId){ const b=document.getElementById('recetaBase'); if(b){ const rec={id:'receta-base', name:'Receta Dr. Dávila.pdf', mime:'application/pdf', blob:b64ToBlob(b.textContent.trim(),'application/pdf')}; await DB.put('files',rec); config.receta.fileId=rec.id; config.receta.fields=JSON.parse(JSON.stringify(DEFAULT_CONFIG.receta.fields)); config.receta.v=3; config.receta.cierre=JSON.parse(JSON.stringify(DEFAULT_CONFIG.receta.cierre)); await DB.put('meta',config,'config'); } }
-  patients = await DB.all('patients');
+  patients = await DB.all('patients'); citas = await DB.all('citas'); agCfg();
   applyBrand(); renderList(); render();
   if(EAPP && !config.receta.fontFileId && !config.receta.fontAuto){ config.receta.fontAuto=true; try{ const f=await EAPP.systemFont(); if(f) await setRxFont(new Blob([f.data]), f.name, f.ps, true); }catch(e){} await DB.put('meta',config,'config'); }
   await Sync.init();
   if(!Sync.supported) $('#btnPhoneSync').style.display='';
   if(navigator.storage?.persist) navigator.storage.persist();
   window.addEventListener('focus', ()=>{ if(Sync.ok) Sync.pull(true); });
+  setInterval(()=>{ if(Sync.ok && !document.hidden) Sync.pull(true); }, 45000);
 })();
 </script>
 </body>
